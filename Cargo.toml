@@ -4,7 +4,7 @@ resolver = "2"
 
 [package]
 name        = "mcp-kit"
-version     = "0.1.0"
+version     = "0.1.1"
 edition     = "2021"
 authors     = ["Ton That Vu"]
 license     = "MIT"
@@ -47,7 +47,7 @@ tracing      = "0.1"
 schemars     = { version = "0.8", features = ["derive"] }
 
 # Feature-gated: server
-uuid     = { version = "1", features = ["v4"],           optional = true }
+uuid     = { version = "1.11", features = ["v4"],           optional = true }
 
 # Feature-gated: stdio
 tokio      = { version = "1", features = ["full"],        optional = true }
@@ -60,7 +60,7 @@ axum     = { version = "0.7", features = ["ws"],          optional = true }
 dashmap  = { version = "6",                                optional = true }
 
 # Proc-macro companion (compiles to host, always safe)
-mcp-kit-macros = { version = "0.1", path = "macros" }
+mcp-kit-macros = { version = "0.1.1", path = "macros" }
 
 [dev-dependencies]
 tokio              = { version = "1", features = ["full"] }

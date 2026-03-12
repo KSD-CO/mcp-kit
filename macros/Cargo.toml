@@ -1,6 +1,6 @@
 [package]
 name        = "mcp-kit-macros"
-version     = "0.1.0"
+version     = "0.1.1"
 edition     = "2021"
 authors     = ["Ton That Vu"]
 license     = "MIT"
@@ -10,6 +10,7 @@ rust-version = "1.80"
 description  = "Proc-macro attributes (#[tool], #[resource], #[prompt]) for the mcp-kit crate"
 keywords     = ["mcp", "protocol", "macros", "derive", "ai"]
 categories   = ["development-tools"]
+readme       = "README.md"
 
 [lib]
 proc-macro = true

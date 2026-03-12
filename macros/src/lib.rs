@@ -18,7 +18,7 @@ use syn::{
 /// - `name = "..."` — tool name (defaults to the function name)
 ///
 /// # Example
-/// ```rust
+/// ```rust,ignore
 /// use mcp_kit::prelude::*;
 ///
 /// /// Add two numbers together.
@@ -27,8 +27,16 @@ use syn::{
 ///     format!("{}", a + b)
 /// }
 ///
-/// // Register with the builder:
-/// McpServer::builder().tool_def(add_tool_def()).build();
+/// #[tokio::main]
+/// async fn main() -> anyhow::Result<()> {
+///     // Register with the builder:
+///     let _server = McpServer::builder()
+///         .name("example")
+///         .version("1.0.0")
+///         .tool_def(add_tool_def())
+///         .build();
+///     Ok(())
+/// }
 /// ```
 ///
 /// Each function parameter must implement `serde::Deserialize` and will be
@@ -253,7 +261,9 @@ fn tool_impl(attr_args: Punctuated<Meta, Token![,]>, func: ItemFn) -> syn::Resul
 /// # Examples
 ///
 /// Static resource:
-/// ```rust
+/// ```rust,ignore
+/// use mcp_kit::prelude::*;
+///
 /// #[resource(uri = "config://app", name = "App Config", description = "Application configuration")]
 /// async fn app_config(_req: ReadResourceRequest) -> McpResult<ReadResourceResult> {
 ///     Ok(ReadResourceResult::text("config://app", r#"{"version": "1.0"}"#))
@@ -261,7 +271,9 @@ fn tool_impl(attr_args: Punctuated<Meta, Token![,]>, func: ItemFn) -> syn::Resul
 /// ```
 ///
 /// Template resource:
-/// ```rust
+/// ```rust,ignore
+/// use mcp_kit::prelude::*;
+///
 /// #[resource(uri = "file://{path}", name = "File System")]
 /// async fn read_file(req: ReadResourceRequest) -> McpResult<ReadResourceResult> {
 ///     let path = req.uri.trim_start_matches("file://");
@@ -403,7 +415,9 @@ fn resource_impl(
 /// # Examples
 ///
 /// Basic prompt:
-/// ```rust
+/// ```rust,ignore
+/// use mcp_kit::prelude::*;
+///
 /// #[prompt(name = "greeting", description = "Generate a greeting message")]
 /// async fn greeting(_req: GetPromptRequest) -> McpResult<GetPromptResult> {
 ///     Ok(GetPromptResult::new(vec![
@@ -413,7 +427,9 @@ fn resource_impl(
 /// ```
 ///
 /// Prompt with arguments:
-/// ```rust
+/// ```rust,ignore
+/// use mcp_kit::prelude::*;
+///
 /// #[prompt(
 ///     name = "code-review",
 ///     description = "Generate a code review",
