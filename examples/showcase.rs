@@ -13,8 +13,8 @@
 //!   cargo run --example showcase
 //!   cargo run --example showcase -- --sse  # SSE transport on port 3000
 
-use rust_mcp::prelude::*;
-use rust_mcp::{prompt, resource, GetPromptRequest, ReadResourceRequest};
+use mcp_kit::prelude::*;
+use mcp_kit::{prompt, resource, GetPromptRequest, ReadResourceRequest};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;

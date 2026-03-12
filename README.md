@@ -1,9 +1,9 @@
-# rust-mcp
+# mcp-kit
 
-[![Crates.io](https://img.shields.io/crates/v/rust-mcp.svg)](https://crates.io/crates/rust-mcp)
-[![Documentation](https://docs.rs/rust-mcp/badge.svg)](https://docs.rs/rust-mcp)
+[![Crates.io](https://img.shields.io/crates/v/mcp-kit.svg)](https://crates.io/crates/mcp-kit)
+[![Documentation](https://docs.rs/mcp-kit/badge.svg)](https://docs.rs/mcp-kit)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![CI](https://github.com/KSD-CO/rust-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/KSD-CO/rust-mcp/actions/workflows/ci.yml)
+[![CI](https://github.com/KSD-CO/mcp-kit/actions/workflows/ci.yml/badge.svg)](https://github.com/KSD-CO/mcp-kit/actions/workflows/ci.yml)
 [![MSRV](https://img.shields.io/badge/MSRV-1.80-blue)](https://www.rust-lang.org)
 
 **An ergonomic, type-safe Rust library for building [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) servers.**
@@ -30,7 +30,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-rust-mcp = "0.1"
+mcp-kit = "0.1"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 schemars = "0.8"
@@ -48,7 +48,7 @@ anyhow = "1"  # For error handling
 The fastest way to build an MCP server with automatic schema generation:
 
 ```rust
-use rust_mcp::prelude::*;
+use mcp_kit::prelude::*;
 
 /// Add two numbers
 #[tool(description = "Add two numbers and return the sum")]
@@ -74,7 +74,7 @@ async fn main() -> anyhow::Result<()> {
 For more control over schema and behavior:
 
 ```rust
-use rust_mcp::prelude::*;
+use mcp_kit::prelude::*;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -217,7 +217,7 @@ server.serve_sse(([0, 0, 0, 0], 3000)).await?;
 Enable in `Cargo.toml`:
 ```toml
 [dependencies]
-rust-mcp = { version = "0.1", features = ["sse"] }
+mcp-kit = { version = "0.1", features = ["sse"] }
 ```
 
 ---
@@ -263,7 +263,7 @@ Integrate with `tracing` for structured logging:
 ```rust
 tracing_subscriber::fmt()
     .with_writer(std::io::stderr)  // Log to stderr for stdio transport
-    .with_env_filter("my_server=debug,rust_mcp=info")
+    .with_env_filter("my_server=debug,mcp_kit=info")
     .init();
 
 tracing::info!("Server starting");
@@ -279,7 +279,7 @@ RUST_LOG=my_server=debug cargo run
 The library uses `McpResult<T>` and `McpError`:
 
 ```rust
-use rust_mcp::{McpError, McpResult};
+use mcp_kit::{McpError, McpResult};
 
 async fn my_tool() -> McpResult<CallToolResult> {
     // Automatic conversion from std::io::Error, serde_json::Error, etc.
@@ -418,7 +418,7 @@ Control which features to compile:
 
 ```toml
 [dependencies]
-rust-mcp = { version = "0.1", default-features = false, features = ["server", "stdio"] }
+mcp-kit = { version = "0.1", default-features = false, features = ["server", "stdio"] }
 ```
 
 **Available features:**
@@ -435,7 +435,7 @@ Use `default-features = false` for WASM targets (only core protocol types).
 ## Architecture
 
 ```
-rust-mcp/
+mcp-kit/
 ├── src/
 │   ├── lib.rs           # Public API and re-exports
 │   ├── error.rs         # Error types
@@ -447,8 +447,8 @@ rust-mcp/
 ```
 
 **Crate structure:**
-- `rust-mcp` — Main library
-- `rust-mcp-kit-macros` — Procedural macros (`#[tool]`, etc.)
+- `mcp-kit` — Main library
+- `mcp-kit-kit-macros` — Procedural macros (`#[tool]`, etc.)
 
 ---
 
@@ -473,8 +473,8 @@ cargo check --workspace --all-features
 ## Resources
 
 - **MCP Specification:** https://modelcontextprotocol.io/
-- **Documentation:** https://docs.rs/rust-mcp
-- **Repository:** https://github.com/KSD-CO/rust-mcp
+- **Documentation:** https://docs.rs/mcp-kit
+- **Repository:** https://github.com/KSD-CO/mcp-kit
 - **Examples:** [`examples/`](examples/)
 - **CI/CD:** [GitHub Actions](.github/workflows/)
 
@@ -502,7 +502,7 @@ This project is licensed under the [MIT License](LICENSE).
 
 ## Changelog
 
-See [GitHub Releases](https://github.com/KSD-CO/rust-mcp/releases) for version history.
+See [GitHub Releases](https://github.com/KSD-CO/mcp-kit/releases) for version history.
 
 ---
 
@@ -510,6 +510,6 @@ See [GitHub Releases](https://github.com/KSD-CO/rust-mcp/releases) for version h
 
 **Built with ❤️ in Rust**
 
-[⭐ Star on GitHub](https://github.com/KSD-CO/rust-mcp) • [📦 View on crates.io](https://crates.io/crates/rust-mcp) • [📖 Read the docs](https://docs.rs/rust-mcp)
+[⭐ Star on GitHub](https://github.com/KSD-CO/mcp-kit) • [📦 View on crates.io](https://crates.io/crates/mcp-kit) • [📖 Read the docs](https://docs.rs/mcp-kit)
 
 </div>

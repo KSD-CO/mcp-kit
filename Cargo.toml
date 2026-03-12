@@ -3,7 +3,7 @@ members  = ["macros"]
 resolver = "2"
 
 [package]
-name        = "rust-mcp"
+name        = "mcp-kit"
 version     = "0.1.0"
 edition     = "2021"
 authors     = ["Ton That Vu"]
@@ -16,7 +16,7 @@ keywords     = ["mcp", "protocol", "llm", "ai", "jsonrpc"]
 categories   = ["network-programming", "asynchronous"]
 
 [lib]
-name = "rust_mcp"
+name = "mcp_kit"
 path = "src/lib.rs"
 
 # ─── Features ────────────────────────────────────────────────────────────────
@@ -60,7 +60,7 @@ axum     = { version = "0.7", features = ["ws"],          optional = true }
 dashmap  = { version = "6",                                optional = true }
 
 # Proc-macro companion (compiles to host, always safe)
-rust-mcp-kit-macros = { version = "0.1", path = "macros" }
+mcp-kit-macros = { version = "0.1", path = "macros" }
 
 [dev-dependencies]
 tokio              = { version = "1", features = ["full"] }

@@ -3,8 +3,8 @@
 //! Run with:
 //!   cargo run --example macros_demo
 
-use rust_mcp::prelude::*;
-use rust_mcp::{prompt, resource, GetPromptRequest, ReadResourceRequest};
+use mcp_kit::prelude::*;
+use mcp_kit::{prompt, resource, GetPromptRequest, ReadResourceRequest};
 
 // ─── Tools with #[tool] macro ────────────────────────────────────────────────
 

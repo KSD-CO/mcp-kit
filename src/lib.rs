@@ -6,7 +6,7 @@
 //! ## Quick start
 //!
 //! ```rust,no_run
-//! use rust_mcp::prelude::*;
+//! use mcp_kit::prelude::*;
 //!
 //! #[tokio::main]
 //! async fn main() -> anyhow::Result<()> {
@@ -88,7 +88,7 @@ pub use transport::stdio::{ServeStdioExt, StdioTransport};
 pub use transport::sse::{ServeSseExt, SseTransport};
 
 // Re-export proc macros
-pub use rust_mcp_kit_macros::{prompt, resource, tool};
+pub use mcp_kit_macros::{prompt, resource, tool};
 
 // Re-export commonly-needed external crates
 pub use schemars::{self, JsonSchema};
@@ -100,7 +100,7 @@ pub use tokio;
 
 // ─── Prelude ─────────────────────────────────────────────────────────────────
 
-/// Everything you need to build an MCP server — import with `use rust_mcp::prelude::*`.
+/// Everything you need to build an MCP server — import with `use mcp_kit::prelude::*`.
 pub mod prelude {
     pub use crate::{serde_json, Deserialize, JsonSchema, Serialize};
     pub use crate::{
@@ -108,7 +108,7 @@ pub mod prelude {
         PromptArgument, PromptMessage, PromptMessageRole, ReadResourceResult, Resource,
         ResourceContents, ResourceTemplate, TextContent, Tool, ToolAnnotations,
     };
-    pub use rust_mcp_kit_macros::tool;
+    pub use mcp_kit_macros::tool;
 
     #[cfg(feature = "server")]
     pub use crate::{

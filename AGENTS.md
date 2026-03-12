@@ -1,10 +1,10 @@
 # AGENTS.md
 
-Essential information for AI coding agents working in the `rust-mcp` repository.
+Essential information for AI coding agents working in the `mcp-kit` repository.
 
 ## Project Overview
 
-**rust-mcp** is a Rust library for building MCP (Model Context Protocol) servers with an ergonomic, type-safe, async-first API.
+**mcp-kit** is a Rust library for building MCP (Model Context Protocol) servers with an ergonomic, type-safe, async-first API.
 
 - **Language:** Rust (Edition 2021, MSRV 1.80)
 - **License:** MIT
@@ -44,7 +44,7 @@ cargo run --example everything -- --sse        # SSE transport on :3000
 use std::io;                                   // Std library first
 use serde::{Deserialize, Serialize};           // External crates
 use crate::error::{McpError, McpResult};       // Internal crate
-use rust_mcp::prelude::*;                           // Prefer glob for prelude
+use mcp_kit::prelude::*;                           // Prefer glob for prelude
 ```
 
 ### Naming Conventions
@@ -197,4 +197,4 @@ RUST_BACKTRACE=1 cargo run
 - [MCP Specification](https://modelcontextprotocol.io/)
 - [Project README](README.md) - Comprehensive examples and API docs
 - [Examples](examples/) - Calculator and comprehensive examples
-- [GitHub Repository](https://github.com/KSD-CO/rust-mcp)
+- [GitHub Repository](https://github.com/KSD-CO/mcp-kit)

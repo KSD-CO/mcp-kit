@@ -19,7 +19,7 @@ use syn::{
 ///
 /// # Example
 /// ```rust
-/// use rust_mcp::prelude::*;
+/// use mcp_kit::prelude::*;
 ///
 /// /// Add two numbers together.
 /// #[tool(description = "Add two numbers")]
@@ -139,22 +139,22 @@ fn tool_impl(attr_args: Punctuated<Meta, Token![,]>, func: ItemFn) -> syn::Resul
             let ty = &p.ty;
             quote! {
                 {
-                    let mut schema = ::rust_mcp::__private::schemars::schema_for!(#ty).schema;
+                    let mut schema = ::mcp_kit::__private::schemars::schema_for!(#ty).schema;
                     // Inline the schema as JSON
-                    let schema_val = ::rust_mcp::__private::serde_json::to_value(&schema)
+                    let schema_val = ::mcp_kit::__private::serde_json::to_value(&schema)
                         .expect("schema serialization failed");
                     let final_val = if !#doc.is_empty() {
                         // Wrap with description
                         let mut obj = match schema_val {
-                            ::rust_mcp::__private::serde_json::Value::Object(m) => m,
+                            ::mcp_kit::__private::serde_json::Value::Object(m) => m,
                             other => {
-                                let mut m = ::rust_mcp::__private::serde_json::Map::new();
+                                let mut m = ::mcp_kit::__private::serde_json::Map::new();
                                 m.insert("type".to_string(), other);
                                 m
                             }
                         };
-                        obj.insert("description".to_string(), ::rust_mcp::__private::serde_json::Value::String(#doc.to_string()));
-                        ::rust_mcp::__private::serde_json::Value::Object(obj)
+                        obj.insert("description".to_string(), ::mcp_kit::__private::serde_json::Value::String(#doc.to_string()));
+                        ::mcp_kit::__private::serde_json::Value::Object(obj)
                     } else {
                         schema_val
                     };
@@ -173,11 +173,11 @@ fn tool_impl(attr_args: Punctuated<Meta, Token![,]>, func: ItemFn) -> syn::Resul
             let name_ident = syn::Ident::new(name_str, Span::call_site());
             let ty = &p.ty;
             quote! {
-                let #name_ident: #ty = ::rust_mcp::__private::serde_json::from_value(
+                let #name_ident: #ty = ::mcp_kit::__private::serde_json::from_value(
                     args.get(#name_str)
                         .cloned()
-                        .unwrap_or(::rust_mcp::__private::serde_json::Value::Null)
-                ).map_err(|e| ::rust_mcp::McpError::InvalidParams(
+                        .unwrap_or(::mcp_kit::__private::serde_json::Value::Null)
+                ).map_err(|e| ::mcp_kit::McpError::InvalidParams(
                     format!("param `{}`: {}", #name_str, e)
                 ))?;
             }
@@ -196,8 +196,8 @@ fn tool_impl(attr_args: Punctuated<Meta, Token![,]>, func: ItemFn) -> syn::Resul
         #func
 
         /// Auto-generated tool definition (from `#[tool]` macro).
-        #fn_vis fn #def_fn_ident() -> ::rust_mcp::ToolDef {
-            use ::rust_mcp::__private::serde_json;
+        #fn_vis fn #def_fn_ident() -> ::mcp_kit::ToolDef {
+            use ::mcp_kit::__private::serde_json;
 
             // Build the input schema
             let mut properties = serde_json::Map::new();
@@ -209,30 +209,30 @@ fn tool_impl(attr_args: Punctuated<Meta, Token![,]>, func: ItemFn) -> syn::Resul
                 "required": [ #(#required_entries),* ],
             });
 
-            let tool = ::rust_mcp::Tool::new(
+            let tool = ::mcp_kit::Tool::new(
                 #fn_name_str,
                 #description,
                 input_schema,
             );
 
-            let handler = ::std::sync::Arc::new(move |req: ::rust_mcp::__private::CallToolRequest| {
+            let handler = ::std::sync::Arc::new(move |req: ::mcp_kit::__private::CallToolRequest| {
                 Box::pin(async move {
                     let args = match req.arguments {
                         serde_json::Value::Object(m) => m,
                         serde_json::Value::Null => serde_json::Map::new(),
                         other => {
-                            return Err(::rust_mcp::McpError::InvalidParams(
+                            return Err(::mcp_kit::McpError::InvalidParams(
                                 format!("expected object, got: {other}")
                             ));
                         }
                     };
                     #(#param_extracts)*
                     let result = #fn_ident(#(#param_names),*).await;
-                    Ok(::rust_mcp::__private::IntoToolResult::into_tool_result(result))
-                }) as ::rust_mcp::__private::BoxFuture<'static, ::rust_mcp::__private::McpResult<::rust_mcp::CallToolResult>>
+                    Ok(::mcp_kit::__private::IntoToolResult::into_tool_result(result))
+                }) as ::mcp_kit::__private::BoxFuture<'static, ::mcp_kit::__private::McpResult<::mcp_kit::CallToolResult>>
             });
 
-            ::rust_mcp::ToolDef::new(tool, handler)
+            ::mcp_kit::ToolDef::new(tool, handler)
         }
     };
 
@@ -350,18 +350,18 @@ fn resource_impl(
             #func
 
             /// Auto-generated resource definition (from `#[resource]` macro).
-            #fn_vis fn #def_fn_ident() -> ::rust_mcp::__private::ResourceDef {
-                let template = ::rust_mcp::__private::ResourceTemplate::new(#uri, #name)
+            #fn_vis fn #def_fn_ident() -> ::mcp_kit::__private::ResourceDef {
+                let template = ::mcp_kit::__private::ResourceTemplate::new(#uri, #name)
                     #with_description
                     #with_mime_type;
 
-                let handler = ::std::sync::Arc::new(move |req: ::rust_mcp::__private::ReadResourceRequest| {
+                let handler = ::std::sync::Arc::new(move |req: ::mcp_kit::__private::ReadResourceRequest| {
                     Box::pin(async move {
                         #fn_ident(req).await
-                    }) as ::rust_mcp::__private::BoxFuture<'static, ::rust_mcp::__private::McpResult<::rust_mcp::__private::ReadResourceResult>>
+                    }) as ::mcp_kit::__private::BoxFuture<'static, ::mcp_kit::__private::McpResult<::mcp_kit::__private::ReadResourceResult>>
                 });
 
-                ::rust_mcp::__private::ResourceDef::new_template(template, handler)
+                ::mcp_kit::__private::ResourceDef::new_template(template, handler)
             }
         }
     } else {
@@ -371,18 +371,18 @@ fn resource_impl(
             #func
 
             /// Auto-generated resource definition (from `#[resource]` macro).
-            #fn_vis fn #def_fn_ident() -> ::rust_mcp::__private::ResourceDef {
-                let resource = ::rust_mcp::__private::Resource::new(#uri, #name)
+            #fn_vis fn #def_fn_ident() -> ::mcp_kit::__private::ResourceDef {
+                let resource = ::mcp_kit::__private::Resource::new(#uri, #name)
                     #with_description
                     #with_mime_type;
 
-                let handler = ::std::sync::Arc::new(move |req: ::rust_mcp::__private::ReadResourceRequest| {
+                let handler = ::std::sync::Arc::new(move |req: ::mcp_kit::__private::ReadResourceRequest| {
                     Box::pin(async move {
                         #fn_ident(req).await
-                    }) as ::rust_mcp::__private::BoxFuture<'static, ::rust_mcp::__private::McpResult<::rust_mcp::__private::ReadResourceResult>>
+                    }) as ::mcp_kit::__private::BoxFuture<'static, ::mcp_kit::__private::McpResult<::mcp_kit::__private::ReadResourceResult>>
                 });
 
-                ::rust_mcp::__private::ResourceDef::new_static(resource, handler)
+                ::mcp_kit::__private::ResourceDef::new_static(resource, handler)
             }
         }
     };
@@ -517,11 +517,11 @@ fn prompt_impl(attr_args: Punctuated<Meta, Token![,]>, func: ItemFn) -> syn::Res
         .map(|(name, required)| {
             if *required {
                 quote! {
-                    ::rust_mcp::__private::PromptArgument::required(#name)
+                    ::mcp_kit::__private::PromptArgument::required(#name)
                 }
             } else {
                 quote! {
-                    ::rust_mcp::__private::PromptArgument::optional(#name)
+                    ::mcp_kit::__private::PromptArgument::optional(#name)
                 }
             }
         })
@@ -548,18 +548,18 @@ fn prompt_impl(attr_args: Punctuated<Meta, Token![,]>, func: ItemFn) -> syn::Res
         #func
 
         /// Auto-generated prompt definition (from `#[prompt]` macro).
-        #fn_vis fn #def_fn_ident() -> ::rust_mcp::__private::PromptDef {
-            let prompt = ::rust_mcp::__private::Prompt::new(#prompt_name)
+        #fn_vis fn #def_fn_ident() -> ::mcp_kit::__private::PromptDef {
+            let prompt = ::mcp_kit::__private::Prompt::new(#prompt_name)
                 #with_desc
                 #with_args;
 
-            let handler = ::std::sync::Arc::new(move |req: ::rust_mcp::__private::GetPromptRequest| {
+            let handler = ::std::sync::Arc::new(move |req: ::mcp_kit::__private::GetPromptRequest| {
                 Box::pin(async move {
                     #fn_ident(req).await
-                }) as ::rust_mcp::__private::BoxFuture<'static, ::rust_mcp::__private::McpResult<::rust_mcp::__private::GetPromptResult>>
+                }) as ::mcp_kit::__private::BoxFuture<'static, ::mcp_kit::__private::McpResult<::mcp_kit::__private::GetPromptResult>>
             });
 
-            ::rust_mcp::__private::PromptDef::new(prompt, handler)
+            ::mcp_kit::__private::PromptDef::new(prompt, handler)
         }
     };
 
