@@ -43,10 +43,10 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       # Publish in dependency order
-      - name: Publish rust-mcp-macros
-        run: cargo publish -p rust-mcp-macros --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - name: Publish rust-mcp-kit-macros
+        run: cargo publish -p rust-mcp-kit-macros --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
-      - name: Wait for rust-mcp-macros to be indexed
+      - name: Wait for rust-mcp-kit-macros to be indexed
         run: sleep 20
 
       - name: Publish rust-mcp (root)

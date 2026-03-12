@@ -88,7 +88,7 @@ pub use transport::stdio::{ServeStdioExt, StdioTransport};
 pub use transport::sse::{ServeSseExt, SseTransport};
 
 // Re-export proc macros
-pub use rust_mcp_macros::{prompt, resource, tool};
+pub use rust_mcp_kit_macros::{prompt, resource, tool};
 
 // Re-export commonly-needed external crates
 pub use schemars::{self, JsonSchema};
@@ -108,7 +108,7 @@ pub mod prelude {
         PromptArgument, PromptMessage, PromptMessageRole, ReadResourceResult, Resource,
         ResourceContents, ResourceTemplate, TextContent, Tool, ToolAnnotations,
     };
-    pub use rust_mcp_macros::tool;
+    pub use rust_mcp_kit_macros::tool;
 
     #[cfg(feature = "server")]
     pub use crate::{

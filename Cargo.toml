@@ -10,7 +10,7 @@ authors     = ["Ton That Vu"]
 license     = "MIT"
 repository  = "https://github.com/KSD-CO/rust-mcp"
 homepage    = "https://github.com/KSD-CO/rust-mcp"
-rust-version = "1.75"
+rust-version = "1.80"
 description  = "Ergonomic, type-safe Rust library for building MCP servers"
 keywords     = ["mcp", "model-context-protocol", "llm", "ai", "jsonrpc"]
 categories   = ["network-programming", "asynchronous"]
@@ -18,14 +18,6 @@ categories   = ["network-programming", "asynchronous"]
 [lib]
 name = "rust_mcp"
 path = "src/lib.rs"
-
-[[example]]
-name = "calculator"
-path = "examples/calculator.rs"
-
-[[example]]
-name = "everything"
-path = "examples/everything.rs"
 
 # ─── Features ────────────────────────────────────────────────────────────────
 # default = full stack (tokio server + stdio + SSE transports)
@@ -68,7 +60,7 @@ axum     = { version = "0.7", features = ["ws"],          optional = true }
 dashmap  = { version = "6",                                optional = true }
 
 # Proc-macro companion (compiles to host, always safe)
-rust-mcp-macros = { path = "macros" }
+rust-mcp-kit-macros = { version = "0.1", path = "macros" }
 
 [dev-dependencies]
 tokio              = { version = "1", features = ["full"] }

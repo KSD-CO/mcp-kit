@@ -6,7 +6,7 @@ Essential information for AI coding agents working in the `rust-mcp` repository.
 
 **rust-mcp** is a Rust library for building MCP (Model Context Protocol) servers with an ergonomic, type-safe, async-first API.
 
-- **Language:** Rust (Edition 2021, MSRV 1.75)
+- **Language:** Rust (Edition 2021, MSRV 1.80)
 - **License:** MIT
 - **Architecture:** Modular, feature-gated library (core types are WASM-safe)
 - **Core deps:** `serde`, `serde_json`, `thiserror`, `tracing`, `schemars`
