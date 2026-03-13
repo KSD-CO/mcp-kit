@@ -24,12 +24,17 @@ async fn main() -> anyhow::Result<()> {
                 .with_description("Review code in a specific language")
                 .with_arguments(vec![
                     PromptArgument::required("language").with_description("Programming language"),
-                    PromptArgument::optional("style").with_description("Review style (brief/detailed)"),
+                    PromptArgument::optional("style")
+                        .with_description("Review style (brief/detailed)"),
                 ]),
             // Prompt handler
             |req: mcp_kit::types::messages::GetPromptRequest| async move {
                 let language = req.arguments.get("language").cloned().unwrap_or_default();
-                let style = req.arguments.get("style").cloned().unwrap_or("brief".into());
+                let style = req
+                    .arguments
+                    .get("style")
+                    .cloned()
+                    .unwrap_or("brief".into());
                 Ok(GetPromptResult::new(vec![PromptMessage::user_text(format!(
                     "Please review the following {} code in {} style:",
                     language, style
@@ -41,7 +46,8 @@ async fn main() -> anyhow::Result<()> {
                 let values = match req.argument.name.as_str() {
                     "language" => {
                         // Filter languages based on current input
-                        let languages = ["rust", "python", "javascript", "typescript", "go", "java"];
+                        let languages =
+                            ["rust", "python", "javascript", "typescript", "go", "java"];
                         languages
                             .iter()
                             .filter(|l| l.starts_with(&req.argument.value.to_lowercase()))

@@ -13,7 +13,9 @@ use crate::{
     },
 };
 
-use crate::server::handler::{CompletionHandlerFn, PromptHandlerFn, ResourceHandlerFn, ToolHandlerFn};
+use crate::server::handler::{
+    CompletionHandlerFn, PromptHandlerFn, ResourceHandlerFn, ToolHandlerFn,
+};
 
 // ─── Tool route ───────────────────────────────────────────────────────────────
 
@@ -235,7 +237,10 @@ impl Router {
     pub fn has_completions(&self) -> bool {
         self.completion_handler.is_some()
             || !self.resource_completions.is_empty()
-            || self.prompts.values().any(|r| r.completion_handler.is_some())
+            || self
+                .prompts
+                .values()
+                .any(|r| r.completion_handler.is_some())
     }
 
     // ── Capability introspection ──────────────────────────────────────────────

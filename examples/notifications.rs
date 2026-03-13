@@ -76,7 +76,10 @@ async fn main() -> anyhow::Result<()> {
     tokio::spawn(async move {
         while let Some(notification) = receiver.recv().await {
             // In production, this would send to the client via the transport
-            eprintln!("📢 Notification: {} - {:?}", notification.method, notification.params);
+            eprintln!(
+                "📢 Notification: {} - {:?}",
+                notification.method, notification.params
+            );
         }
     });
 

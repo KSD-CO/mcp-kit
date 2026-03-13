@@ -201,7 +201,8 @@ impl McpServerBuilder {
     ///     .build();
     /// ```
     pub fn completion<M>(mut self, handler: impl CompletionHandler<M>) -> Self {
-        self.router.set_completion_handler(handler.into_handler_fn());
+        self.router
+            .set_completion_handler(handler.into_handler_fn());
         self
     }
 

@@ -13,8 +13,12 @@ pub mod auth_context;
 pub use builder::{McpServerBuilder, ToolDef};
 pub use core::McpServer;
 pub use extract::{Extension, Json, State};
-pub use handler::{BoxFuture, CompletionHandler, HandlerFn, IntoToolResult, ToolHandler, TypedMarker};
-pub use notification::{NotificationReceiver, NotificationSender, SendError, SharedNotificationSender};
+pub use handler::{
+    BoxFuture, CompletionHandler, HandlerFn, IntoToolResult, ToolHandler, TypedMarker,
+};
+pub use notification::{
+    NotificationReceiver, NotificationSender, SendError, SharedNotificationSender,
+};
 pub use progress::{ProgressTokenExt, ProgressTracker};
 pub use router::Router;
 pub use session::Session;

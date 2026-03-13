@@ -48,15 +48,13 @@ impl ProgressTracker {
     ///
     /// Extracts the progress token from the `_meta` field of a request params object.
     pub fn from_meta(notifier: NotificationSender, meta: Option<&serde_json::Value>) -> Self {
-        let token = meta
-            .and_then(|m| m.get("progressToken"))
-            .and_then(|v| {
-                if let Some(s) = v.as_str() {
-                    Some(ProgressToken::String(s.to_owned()))
-                } else {
-                    v.as_i64().map(ProgressToken::Number)
-                }
-            });
+        let token = meta.and_then(|m| m.get("progressToken")).and_then(|v| {
+            if let Some(s) = v.as_str() {
+                Some(ProgressToken::String(s.to_owned()))
+            } else {
+                v.as_i64().map(ProgressToken::Number)
+            }
+        });
         Self::new(notifier, token)
     }
 

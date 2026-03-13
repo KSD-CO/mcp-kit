@@ -3,7 +3,9 @@ use std::{future::Future, pin::Pin, sync::Arc};
 use crate::{
     error::{McpError, McpResult},
     types::{
-        messages::{CallToolRequest, CompleteRequest, CompleteResult, GetPromptRequest, ReadResourceRequest},
+        messages::{
+            CallToolRequest, CompleteRequest, CompleteResult, GetPromptRequest, ReadResourceRequest,
+        },
         prompt::GetPromptResult,
         resource::ReadResourceResult,
         tool::CallToolResult,
