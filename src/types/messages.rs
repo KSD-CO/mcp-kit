@@ -247,3 +247,13 @@ pub struct LogMessageNotification {
 pub struct ResourceUpdatedNotification {
     pub uri: String,
 }
+
+// ─── Roots Notifications ──────────────────────────────────────────────────────
+
+/// Empty request to list roots (server → client)
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ListRootsRequest {}
+
+/// Notification that the roots list has changed
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct RootsListChangedNotification {}

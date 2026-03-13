@@ -46,9 +46,9 @@ pub mod auth;
 #[cfg(feature = "server")]
 pub mod server;
 
-// ─── Transport module (requires `stdio` or `sse` feature) ────────────────────
+// ─── Transport module (requires `stdio`, `sse`, or `websocket` feature) ──────
 
-#[cfg(any(feature = "stdio", feature = "sse"))]
+#[cfg(any(feature = "stdio", feature = "sse", feature = "websocket"))]
 pub mod transport;
 
 // ─── Top-level re-exports ─────────────────────────────────────────────────────
@@ -115,6 +115,9 @@ pub use transport::stdio::{ServeStdioExt, StdioTransport};
 #[cfg(feature = "sse")]
 pub use transport::sse::{ServeSseExt, SseTransport};
 
+#[cfg(feature = "websocket")]
+pub use transport::websocket::{ServeWebSocketExt, WebSocketTransport};
+
 // Re-export proc macros
 pub use mcp_kit_macros::{prompt, resource, tool};
 
@@ -168,6 +171,9 @@ pub mod prelude {
 
     #[cfg(feature = "sse")]
     pub use crate::ServeSseExt;
+
+    #[cfg(feature = "websocket")]
+    pub use crate::ServeWebSocketExt;
 }
 
 // ─── Private re-exports for proc-macro use ────────────────────────────────────

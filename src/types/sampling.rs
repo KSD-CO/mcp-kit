@@ -9,6 +9,29 @@ pub struct MessageParam {
     pub content: Content,
 }
 
+impl MessageParam {
+    /// Create a new message with the given role and content.
+    pub fn new(role: SamplingRole, content: Content) -> Self {
+        Self { role, content }
+    }
+
+    /// Create a user message with text content.
+    pub fn user_text(text: impl Into<String>) -> Self {
+        Self {
+            role: SamplingRole::User,
+            content: Content::text(text),
+        }
+    }
+
+    /// Create an assistant message with text content.
+    pub fn assistant_text(text: impl Into<String>) -> Self {
+        Self {
+            role: SamplingRole::Assistant,
+            content: Content::text(text),
+        }
+    }
+}
+
 /// Role in a sampling conversation
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]

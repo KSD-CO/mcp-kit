@@ -7,6 +7,9 @@ pub mod stdio;
 #[cfg(feature = "sse")]
 pub mod sse;
 
+#[cfg(feature = "websocket")]
+pub mod websocket;
+
 #[cfg(all(feature = "sse", feature = "auth"))]
 pub mod auth_layer;
 
@@ -18,6 +21,9 @@ pub use stdio::{ServeStdioExt, StdioTransport};
 
 #[cfg(feature = "sse")]
 pub use sse::{ServeSseExt, SseTransport};
+
+#[cfg(feature = "websocket")]
+pub use websocket::{ServeWebSocketExt, WebSocketTransport};
 
 #[cfg(feature = "auth-mtls")]
 pub use tls::{ServeSseTlsExt, TlsConfig};

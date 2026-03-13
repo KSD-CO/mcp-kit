@@ -26,7 +26,7 @@ path = "src/lib.rs"
 
 [features]
 default = ["full"]
-full    = ["server", "stdio", "sse", "auth-full"]
+full    = ["server", "stdio", "sse", "websocket", "auth-full"]
 
 ## Enables McpServer, builder, handlers, router, session
 server = ["dep:uuid"]
@@ -36,6 +36,9 @@ stdio  = ["server", "dep:tokio", "dep:tokio-util", "dep:futures-util", "dep:byte
 
 ## Enables the SSE / HTTP transport (requires axum)
 sse    = ["server", "dep:tokio", "dep:axum", "dep:dashmap", "dep:futures-util"]
+
+## Enables the WebSocket transport (requires axum with ws)
+websocket = ["server", "dep:tokio", "dep:axum", "dep:futures-util"]
 
 ## Auth features
 auth        = ["server"]
@@ -116,6 +119,10 @@ required-features = ["auth-basic", "sse"]
 [[example]]
 name = "auth_composite"
 required-features = ["auth-full", "sse"]
+
+[[example]]
+name = "websocket"
+required-features = ["websocket"]
 
 [profile.release]
 opt-level     = 3

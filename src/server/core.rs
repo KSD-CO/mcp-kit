@@ -8,9 +8,10 @@ use crate::{
     },
     types::{
         messages::{
-            CallToolRequest, CompleteRequest, GetPromptRequest, InitializeRequest,
-            InitializeResult, ListPromptsRequest, ListResourcesRequest, ListToolsRequest,
-            ReadResourceRequest, SetLevelRequest, SubscribeRequest, UnsubscribeRequest,
+            CallToolRequest, CancelledNotification, CompleteRequest, GetPromptRequest,
+            InitializeRequest, InitializeResult, ListPromptsRequest, ListResourcesRequest,
+            ListToolsRequest, ReadResourceRequest, SetLevelRequest, SubscribeRequest,
+            UnsubscribeRequest,
         },
         LoggingCapability, PromptsCapability, ResourcesCapability, ServerCapabilities, ServerInfo,
         ToolsCapability,
@@ -197,6 +198,7 @@ impl McpServer {
         );
 
         session.client_info = Some(req.client_info);
+        session.client_capabilities = Some(req.capabilities);
         session.protocol_version = Some(req.protocol_version);
         session.initialized = true;
 
@@ -243,7 +245,16 @@ impl McpServer {
                 info!(session = %session.id, "Client sent initialized notification");
             }
             "notifications/cancelled" => {
-                debug!("Client cancelled a request");
+                if let Some(params) = notif.params {
+                    if let Ok(cancelled) = serde_json::from_value::<CancelledNotification>(params) {
+                        debug!(request_id = ?cancelled.request_id, reason = ?cancelled.reason, "Request cancelled by client");
+                        // TODO: Integrate with CancellationManager when available in context
+                    }
+                }
+            }
+            "notifications/roots/list_changed" => {
+                debug!("Client roots list changed");
+                // Client will send roots/list if we request it
             }
             method => {
                 warn!(method, "Received unknown notification");

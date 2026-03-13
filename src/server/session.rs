@@ -1,6 +1,6 @@
 use uuid::Uuid;
 
-use crate::types::ClientInfo;
+use crate::types::{ClientCapabilities, ClientInfo, Root};
 
 #[cfg(feature = "auth")]
 use crate::auth::AuthenticatedIdentity;
@@ -32,8 +32,11 @@ impl std::fmt::Display for SessionId {
 pub struct Session {
     pub id: SessionId,
     pub client_info: Option<ClientInfo>,
+    pub client_capabilities: Option<ClientCapabilities>,
     pub protocol_version: Option<String>,
     pub initialized: bool,
+    /// Roots declared by the client.
+    pub roots: Vec<Root>,
     /// Populated by the transport layer after successful authentication.
     /// `None` means the request was unauthenticated (or auth is not configured).
     #[cfg(feature = "auth")]
@@ -45,11 +48,30 @@ impl Session {
         Self {
             id: SessionId::new(),
             client_info: None,
+            client_capabilities: None,
             protocol_version: None,
             initialized: false,
+            roots: Vec::new(),
             #[cfg(feature = "auth")]
             identity: None,
         }
+    }
+
+    /// Check if the client supports sampling.
+    pub fn supports_sampling(&self) -> bool {
+        self.client_capabilities
+            .as_ref()
+            .and_then(|c| c.sampling.as_ref())
+            .is_some()
+    }
+
+    /// Check if the client supports roots.
+    pub fn supports_roots(&self) -> bool {
+        self.client_capabilities
+            .as_ref()
+            .and_then(|c| c.roots.as_ref())
+            .map(|r| r.list_changed.unwrap_or(false))
+            .unwrap_or(false)
     }
 }
 
