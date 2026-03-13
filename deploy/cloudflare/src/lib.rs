@@ -1,23 +1,43 @@
-//! MCP server on Cloudflare Workers — Streamable HTTP transport.
+//! MCP Server on Cloudflare Workers — Complete Example
 //!
-//! Transport: `POST /mcp` accepts a JSON-RPC message and returns a JSON response.
-//!            `GET  /mcp` returns server metadata.
+//! This is a production-ready template demonstrating all MCP capabilities:
+//! - **Tools**: Calculator operations, text utilities
+//! - **Resources**: Static config, dynamic data
+//! - **Resource Templates**: User profiles, documents by ID
+//! - **Prompts**: Code review, summarization, translation
 //!
-//! This is stateless — every request is self-contained.  Session initialization
-//! state is not persisted across requests, which is fine for the common pattern
-//! of "initialize once, then call tools."
+//! ## Transport
 //!
-//! # Build & deploy
+//! - `POST /mcp` — JSON-RPC endpoint for all MCP requests
+//! - `GET  /mcp` — Server metadata and discovery
 //!
-//!   cargo install worker-build
-//!   wrangler deploy
+//! ## Build & Deploy
 //!
-//! # Test locally
+//! ```bash
+//! cd deploy/cloudflare
+//! npx wrangler deploy
+//! ```
 //!
-//!   wrangler dev
-//!   curl -X POST http://localhost:8787/mcp \
-//!     -H "Content-Type: application/json" \
-//!     -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+//! ## Test Locally
+//!
+//! ```bash
+//! npx wrangler dev
+//!
+//! # Initialize
+//! curl -X POST http://localhost:8787/mcp \
+//!   -H "Content-Type: application/json" \
+//!   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}'
+//!
+//! # List tools
+//! curl -X POST http://localhost:8787/mcp \
+//!   -H "Content-Type: application/json" \
+//!   -d '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
+//!
+//! # Call a tool
+//! curl -X POST http://localhost:8787/mcp \
+//!   -H "Content-Type: application/json" \
+//!   -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"add","arguments":{"a":5,"b":3}}}'
+//! ```
 
 use std::{collections::HashMap, pin::Pin, rc::Rc};
 
@@ -25,8 +45,7 @@ use futures::Future;
 use mcp_kit::{
     error::{McpError, McpResult},
     protocol::{
-        JsonRpcError, JsonRpcMessage, JsonRpcNotification, JsonRpcRequest, JsonRpcResponse,
-        MCP_PROTOCOL_VERSION,
+        JsonRpcError, JsonRpcMessage, JsonRpcRequest, JsonRpcResponse, MCP_PROTOCOL_VERSION,
     },
     types::{
         content::Content,
@@ -34,33 +53,25 @@ use mcp_kit::{
             CallToolRequest, GetPromptRequest, InitializeRequest, InitializeResult,
             ReadResourceRequest,
         },
-        prompt::{GetPromptResult, Prompt, PromptArgument},
-        resource::{ReadResourceResult, Resource, ResourceTemplate},
+        prompt::{GetPromptResult, Prompt, PromptArgument, PromptMessage},
+        resource::{ReadResourceResult, Resource, ResourceContents, ResourceTemplate},
         tool::{CallToolResult, Tool},
-        Implementation, LoggingCapability, PromptsCapability, ResourcesCapability,
-        ServerCapabilities, ServerInfo, ToolsCapability,
+        LoggingCapability, PromptsCapability, ResourcesCapability, ServerCapabilities, ServerInfo,
+        ToolsCapability,
     },
 };
-use serde::de::DeserializeOwned;
+use serde::{de::DeserializeOwned, Deserialize};
 use serde_json::Value;
 use worker::*;
 
-// ─── Future type alias ────────────────────────────────────────────────────────
+// ─── Type Aliases ─────────────────────────────────────────────────────────────
 
 type LocalFuture<T> = Pin<Box<dyn Future<Output = T>>>;
+type ToolFn = Rc<dyn Fn(Value) -> LocalFuture<McpResult<CallToolResult>>>;
+type ResourceFn = Rc<dyn Fn(ReadResourceRequest) -> LocalFuture<McpResult<ReadResourceResult>>>;
+type PromptFn = Rc<dyn Fn(GetPromptRequest) -> LocalFuture<McpResult<GetPromptResult>>>;
 
-// ─── Handler types (single-threaded WASM — no Send/Sync required) ─────────────
-
-type ToolFn =
-    Rc<dyn Fn(serde_json::Value) -> LocalFuture<McpResult<CallToolResult>>>;
-
-type ResourceFn =
-    Rc<dyn Fn(ReadResourceRequest) -> LocalFuture<McpResult<ReadResourceResult>>>;
-
-type PromptFn =
-    Rc<dyn Fn(GetPromptRequest) -> LocalFuture<McpResult<GetPromptResult>>>;
-
-// ─── Registry entries ─────────────────────────────────────────────────────────
+// ─── Registry Entries ─────────────────────────────────────────────────────────
 
 struct ToolEntry {
     tool: Tool,
@@ -85,6 +96,9 @@ struct PromptEntry {
 // ─── CloudflareServer ─────────────────────────────────────────────────────────
 
 /// Stateless MCP server for Cloudflare Workers.
+///
+/// Each request is self-contained. Session state is not persisted across
+/// requests, which works well for the common "initialize → call tools" pattern.
 pub struct CloudflareServer {
     info: ServerInfo,
     instructions: Option<String>,
@@ -112,7 +126,6 @@ impl CloudflareServer {
                     Err(e) => Some(JsonRpcMessage::Error(JsonRpcError::new(id, e))),
                 }
             }
-            // Notifications don't expect a response
             JsonRpcMessage::Notification(_) => None,
             _ => None,
         }
@@ -130,25 +143,29 @@ impl CloudflareServer {
                 let result = InitializeResult {
                     protocol_version: MCP_PROTOCOL_VERSION.to_owned(),
                     capabilities: ServerCapabilities {
-                        tools: if !self.tools.is_empty() {
-                            Some(ToolsCapability { list_changed: Some(false) })
-                        } else {
+                        tools: if self.tools.is_empty() {
                             None
+                        } else {
+                            Some(ToolsCapability {
+                                list_changed: Some(false),
+                            })
                         },
-                        resources: if !self.resources.is_empty()
-                            || !self.resource_templates.is_empty()
+                        resources: if self.resources.is_empty()
+                            && self.resource_templates.is_empty()
                         {
+                            None
+                        } else {
                             Some(ResourcesCapability {
                                 subscribe: Some(false),
                                 list_changed: Some(false),
                             })
-                        } else {
-                            None
                         },
-                        prompts: if !self.prompts.is_empty() {
-                            Some(PromptsCapability { list_changed: Some(false) })
-                        } else {
+                        prompts: if self.prompts.is_empty() {
                             None
+                        } else {
+                            Some(PromptsCapability {
+                                list_changed: Some(false),
+                            })
                         },
                         logging: Some(LoggingCapability {}),
                         experimental: None,
@@ -185,11 +202,17 @@ impl CloudflareServer {
                 Ok(serde_json::json!({ "resources": resources }))
             }
 
+            "resources/templates/list" => {
+                let templates: Vec<&ResourceTemplate> =
+                    self.resource_templates.iter().map(|e| &e.template).collect();
+                Ok(serde_json::json!({ "resourceTemplates": templates }))
+            }
+
             "resources/read" => {
                 let req: ReadResourceRequest = serde_json::from_value(params)
                     .map_err(|e| McpError::InvalidParams(e.to_string()))?;
 
-                // Exact URI match
+                // Exact URI match first
                 if let Some(entry) = self.resources.get(&req.uri) {
                     let result = (entry.handler)(req).await?;
                     return Ok(serde_json::to_value(result)?);
@@ -259,21 +282,7 @@ impl CloudflareServerBuilder {
 
     // ── Tools ─────────────────────────────────────────────────────────────────
 
-    /// Register a tool with a raw JSON handler.
-    pub fn tool_raw<F, Fut>(mut self, tool: Tool, handler: F) -> Self
-    where
-        F: Fn(Value) -> Fut + 'static,
-        Fut: Future<Output = McpResult<CallToolResult>> + 'static,
-    {
-        let f = Rc::new(move |args: Value| -> LocalFuture<McpResult<CallToolResult>> {
-            Box::pin(handler(args))
-        });
-        self.tools.insert(tool.name.clone(), ToolEntry { tool, handler: f });
-        self
-    }
-
-    /// Register a tool with a typed handler — parameters are automatically
-    /// deserialized from the arguments object.
+    /// Register a tool with typed parameters (auto-deserialized from JSON).
     pub fn tool<T, F, Fut>(mut self, tool: Tool, handler: F) -> Self
     where
         T: DeserializeOwned + 'static,
@@ -284,19 +293,33 @@ impl CloudflareServerBuilder {
             let params: T = match serde_json::from_value(args) {
                 Ok(p) => p,
                 Err(e) => {
-                    return Box::pin(async move {
-                        Err(McpError::InvalidParams(e.to_string()))
-                    })
+                    return Box::pin(async move { Err(McpError::InvalidParams(e.to_string())) })
                 }
             };
             Box::pin(handler(params))
         });
-        self.tools.insert(tool.name.clone(), ToolEntry { tool, handler: f });
+        self.tools
+            .insert(tool.name.clone(), ToolEntry { tool, handler: f });
+        self
+    }
+
+    /// Register a tool with raw JSON handler.
+    pub fn tool_raw<F, Fut>(mut self, tool: Tool, handler: F) -> Self
+    where
+        F: Fn(Value) -> Fut + 'static,
+        Fut: Future<Output = McpResult<CallToolResult>> + 'static,
+    {
+        let f = Rc::new(move |args: Value| -> LocalFuture<McpResult<CallToolResult>> {
+            Box::pin(handler(args))
+        });
+        self.tools
+            .insert(tool.name.clone(), ToolEntry { tool, handler: f });
         self
     }
 
     // ── Resources ─────────────────────────────────────────────────────────────
 
+    /// Register a static resource.
     pub fn resource<F, Fut>(mut self, resource: Resource, handler: F) -> Self
     where
         F: Fn(ReadResourceRequest) -> Fut + 'static,
@@ -307,10 +330,17 @@ impl CloudflareServerBuilder {
                 Box::pin(handler(req))
             },
         );
-        self.resources.insert(resource.uri.clone(), ResourceEntry { resource, handler: f });
+        self.resources.insert(
+            resource.uri.clone(),
+            ResourceEntry {
+                resource,
+                handler: f,
+            },
+        );
         self
     }
 
+    /// Register a resource template (URI with variables like `user://{id}`).
     pub fn resource_template<F, Fut>(mut self, template: ResourceTemplate, handler: F) -> Self
     where
         F: Fn(ReadResourceRequest) -> Fut + 'static,
@@ -321,12 +351,14 @@ impl CloudflareServerBuilder {
                 Box::pin(handler(req))
             },
         );
-        self.resource_templates.push(ResourceTemplateEntry { template, handler: f });
+        self.resource_templates
+            .push(ResourceTemplateEntry { template, handler: f });
         self
     }
 
     // ── Prompts ───────────────────────────────────────────────────────────────
 
+    /// Register a prompt template.
     pub fn prompt<F, Fut>(mut self, prompt: Prompt, handler: F) -> Self
     where
         F: Fn(GetPromptRequest) -> Fut + 'static,
@@ -337,15 +369,24 @@ impl CloudflareServerBuilder {
                 Box::pin(handler(req))
             },
         );
-        self.prompts.insert(prompt.name.clone(), PromptEntry { prompt, handler: f });
+        self.prompts
+            .insert(prompt.name.clone(), PromptEntry { prompt, handler: f });
         self
     }
 
     pub fn build(self) -> CloudflareServer {
         CloudflareServer {
             info: ServerInfo::new(
-                if self.name.is_empty() { "mcp-server" } else { &self.name },
-                if self.version.is_empty() { "0.1.0" } else { &self.version },
+                if self.name.is_empty() {
+                    "mcp-cloudflare"
+                } else {
+                    &self.name
+                },
+                if self.version.is_empty() {
+                    "1.0.0"
+                } else {
+                    &self.version
+                },
             ),
             instructions: self.instructions,
             tools: self.tools,
@@ -356,7 +397,7 @@ impl CloudflareServerBuilder {
     }
 }
 
-// ─── Thread-local server (initialised once per isolate) ──────────────────────
+// ─── Thread-local server instance ─────────────────────────────────────────────
 
 thread_local! {
     static SERVER: Rc<CloudflareServer> = Rc::new(build_server());
@@ -366,51 +407,36 @@ fn get_server() -> Rc<CloudflareServer> {
     SERVER.with(Rc::clone)
 }
 
-/// Define your tools, resources, and prompts here.
+// ─── Server Definition ────────────────────────────────────────────────────────
+
 fn build_server() -> CloudflareServer {
-    use mcp_kit::types::content::Content;
-    use serde::Deserialize;
-
-    // ── Example: Calculator ───────────────────────────────────────────────────
-
-    #[derive(Deserialize)]
-    struct BinaryInput {
-        a: f64,
-        b: f64,
-    }
-
-    #[derive(Deserialize)]
-    struct SqrtInput {
-        n: f64,
-    }
-
-    let binary_schema = serde_json::json!({
-        "type": "object",
-        "properties": {
-            "a": { "type": "number", "description": "First operand" },
-            "b": { "type": "number", "description": "Second operand" }
-        },
-        "required": ["a", "b"]
-    });
-
     CloudflareServerBuilder::default()
-        .name("calculator")
+        .name("mcp-cloudflare-demo")
         .version("1.0.0")
-        .instructions("A calculator server running on Cloudflare Workers.")
+        .instructions(
+            "A comprehensive MCP server running on Cloudflare Workers.\n\
+             Available capabilities:\n\
+             - Calculator tools (add, subtract, multiply, divide, sqrt)\n\
+             - Text utilities (uppercase, lowercase, reverse, word_count)\n\
+             - Resources (config, server info)\n\
+             - Resource templates (user profiles, documents)\n\
+             - Prompts (code review, summarize, translate)",
+        )
+        // ── Calculator Tools ──────────────────────────────────────────────────
         .tool(
-            Tool::new("add", "Add two numbers", binary_schema.clone()),
+            Tool::new("add", "Add two numbers", binary_schema()),
             |p: BinaryInput| async move { Ok(CallToolResult::text(format!("{}", p.a + p.b))) },
         )
         .tool(
-            Tool::new("subtract", "Subtract b from a", binary_schema.clone()),
+            Tool::new("subtract", "Subtract b from a", binary_schema()),
             |p: BinaryInput| async move { Ok(CallToolResult::text(format!("{}", p.a - p.b))) },
         )
         .tool(
-            Tool::new("multiply", "Multiply two numbers", binary_schema.clone()),
+            Tool::new("multiply", "Multiply two numbers", binary_schema()),
             |p: BinaryInput| async move { Ok(CallToolResult::text(format!("{}", p.a * p.b))) },
         )
         .tool(
-            Tool::new("divide", "Divide a by b", binary_schema),
+            Tool::new("divide", "Divide a by b", binary_schema()),
             |p: BinaryInput| async move {
                 if p.b == 0.0 {
                     return Ok(CallToolResult::error("Division by zero"));
@@ -432,28 +458,313 @@ fn build_server() -> CloudflareServer {
             ),
             |p: SqrtInput| async move {
                 if p.n < 0.0 {
-                    return Ok(CallToolResult::error("n must be non-negative"));
+                    return Ok(CallToolResult::error("Cannot compute sqrt of negative number"));
                 }
                 Ok(CallToolResult::text(format!("{}", p.n.sqrt())))
+            },
+        )
+        // ── Text Utility Tools ────────────────────────────────────────────────
+        .tool(
+            Tool::new("uppercase", "Convert text to uppercase", text_schema()),
+            |p: TextInput| async move { Ok(CallToolResult::text(p.text.to_uppercase())) },
+        )
+        .tool(
+            Tool::new("lowercase", "Convert text to lowercase", text_schema()),
+            |p: TextInput| async move { Ok(CallToolResult::text(p.text.to_lowercase())) },
+        )
+        .tool(
+            Tool::new(
+                "reverse",
+                "Reverse the characters in text",
+                text_schema(),
+            ),
+            |p: TextInput| async move {
+                Ok(CallToolResult::text(p.text.chars().rev().collect::<String>()))
+            },
+        )
+        .tool(
+            Tool::new("word_count", "Count words in text", text_schema()),
+            |p: TextInput| async move {
+                let count = p.text.split_whitespace().count();
+                Ok(CallToolResult::text(format!("{count}")))
+            },
+        )
+        .tool(
+            Tool::new(
+                "echo",
+                "Echo back the input with metadata",
+                serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "message": { "type": "string", "description": "Message to echo" }
+                    },
+                    "required": ["message"]
+                }),
+            ),
+            |p: EchoInput| async move {
+                Ok(CallToolResult::new(vec![
+                    Content::text(format!("You said: {}", p.message)),
+                    Content::text(format!("Length: {} chars", p.message.len())),
+                ]))
+            },
+        )
+        // ── Static Resources ──────────────────────────────────────────────────
+        .resource(
+            Resource::new("config://app", "App Configuration")
+                .with_description("Application configuration settings")
+                .with_mime_type("application/json"),
+            |req| async move {
+                let config = serde_json::json!({
+                    "name": "mcp-cloudflare-demo",
+                    "version": "1.0.0",
+                    "environment": "production",
+                    "features": {
+                        "tools": true,
+                        "resources": true,
+                        "prompts": true
+                    },
+                    "limits": {
+                        "max_tokens": 4096,
+                        "timeout_ms": 30000
+                    }
+                });
+                Ok(ReadResourceResult::new(vec![ResourceContents::text(
+                    req.uri,
+                    serde_json::to_string_pretty(&config).unwrap(),
+                )]))
+            },
+        )
+        .resource(
+            Resource::new("info://server", "Server Information")
+                .with_description("Runtime server information")
+                .with_mime_type("application/json"),
+            |req| async move {
+                let info = serde_json::json!({
+                    "runtime": "Cloudflare Workers",
+                    "transport": "Streamable HTTP",
+                    "endpoint": "/mcp",
+                    "capabilities": ["tools", "resources", "prompts"],
+                    "timestamp": "2024-01-01T00:00:00Z"
+                });
+                Ok(ReadResourceResult::new(vec![ResourceContents::text(
+                    req.uri,
+                    serde_json::to_string_pretty(&info).unwrap(),
+                )]))
+            },
+        )
+        .resource(
+            Resource::new("docs://readme", "README Documentation")
+                .with_description("How to use this MCP server")
+                .with_mime_type("text/markdown"),
+            |req| async move {
+                let readme = r#"# MCP Cloudflare Demo Server
+
+## Overview
+This is a demonstration MCP server running on Cloudflare Workers.
+
+## Available Tools
+- **Calculator**: add, subtract, multiply, divide, sqrt
+- **Text Utils**: uppercase, lowercase, reverse, word_count, echo
+
+## Available Resources
+- `config://app` - Application configuration
+- `info://server` - Server runtime information
+- `user://{id}` - User profile by ID
+- `doc://{id}` - Document by ID
+
+## Available Prompts
+- `code-review` - Review code for issues
+- `summarize` - Summarize text content
+- `translate` - Translate text to another language
+"#;
+                Ok(ReadResourceResult::new(vec![ResourceContents::text(
+                    req.uri, readme,
+                )]))
+            },
+        )
+        // ── Resource Templates ────────────────────────────────────────────────
+        .resource_template(
+            ResourceTemplate::new("user://{id}", "User Profile")
+                .with_description("Get user profile by ID")
+                .with_mime_type("application/json"),
+            |req| async move {
+                // Extract ID from URI (e.g., "user://123" -> "123")
+                let id = req.uri.strip_prefix("user://").unwrap_or("unknown");
+
+                // Simulated user data
+                let user = serde_json::json!({
+                    "id": id,
+                    "name": format!("User {}", id),
+                    "email": format!("user{}@example.com", id),
+                    "role": if id == "1" { "admin" } else { "user" },
+                    "created_at": "2024-01-01T00:00:00Z"
+                });
+
+                Ok(ReadResourceResult::new(vec![ResourceContents::text(
+                    req.uri,
+                    serde_json::to_string_pretty(&user).unwrap(),
+                )]))
+            },
+        )
+        .resource_template(
+            ResourceTemplate::new("doc://{id}", "Document")
+                .with_description("Get document by ID")
+                .with_mime_type("application/json"),
+            |req| async move {
+                let id = req.uri.strip_prefix("doc://").unwrap_or("unknown");
+
+                let doc = serde_json::json!({
+                    "id": id,
+                    "title": format!("Document {}", id),
+                    "content": format!("This is the content of document {}.", id),
+                    "author": "System",
+                    "updated_at": "2024-01-01T00:00:00Z"
+                });
+
+                Ok(ReadResourceResult::new(vec![ResourceContents::text(
+                    req.uri,
+                    serde_json::to_string_pretty(&doc).unwrap(),
+                )]))
+            },
+        )
+        // ── Prompts ───────────────────────────────────────────────────────────
+        .prompt(
+            Prompt::new("code-review", "Review code for bugs and improvements")
+                .with_argument(PromptArgument::new("code", "The code to review").required())
+                .with_argument(PromptArgument::new("language", "Programming language")),
+            |req| async move {
+                let args = req.arguments.unwrap_or_default();
+                let code = args.get("code").map(|s| s.as_str()).unwrap_or("");
+                let lang = args
+                    .get("language")
+                    .map(|s| s.as_str())
+                    .unwrap_or("unknown");
+
+                Ok(GetPromptResult {
+                    description: Some(format!("Code review for {} code", lang)),
+                    messages: vec![PromptMessage::user(format!(
+                        "Please review the following {} code for:\n\
+                         1. Potential bugs and errors\n\
+                         2. Performance improvements\n\
+                         3. Code style and best practices\n\
+                         4. Security vulnerabilities\n\n\
+                         ```{}\n{}\n```",
+                        lang, lang, code
+                    ))],
+                })
+            },
+        )
+        .prompt(
+            Prompt::new("summarize", "Summarize text content")
+                .with_argument(PromptArgument::new("text", "The text to summarize").required())
+                .with_argument(PromptArgument::new(
+                    "max_sentences",
+                    "Maximum sentences in summary",
+                )),
+            |req| async move {
+                let args = req.arguments.unwrap_or_default();
+                let text = args.get("text").map(|s| s.as_str()).unwrap_or("");
+                let max = args
+                    .get("max_sentences")
+                    .map(|s| s.as_str())
+                    .unwrap_or("3");
+
+                Ok(GetPromptResult {
+                    description: Some("Text summarization".into()),
+                    messages: vec![PromptMessage::user(format!(
+                        "Please summarize the following text in {} sentences or fewer:\n\n{}",
+                        max, text
+                    ))],
+                })
+            },
+        )
+        .prompt(
+            Prompt::new("translate", "Translate text to another language")
+                .with_argument(PromptArgument::new("text", "The text to translate").required())
+                .with_argument(
+                    PromptArgument::new("target_language", "Target language (e.g., Spanish)")
+                        .required(),
+                ),
+            |req| async move {
+                let args = req.arguments.unwrap_or_default();
+                let text = args.get("text").map(|s| s.as_str()).unwrap_or("");
+                let target = args
+                    .get("target_language")
+                    .map(|s| s.as_str())
+                    .unwrap_or("English");
+
+                Ok(GetPromptResult {
+                    description: Some(format!("Translation to {}", target)),
+                    messages: vec![PromptMessage::user(format!(
+                        "Please translate the following text to {}:\n\n{}",
+                        target, text
+                    ))],
+                })
             },
         )
         .build()
 }
 
-// ─── Cloudflare Workers fetch handler ────────────────────────────────────────
+// ─── Input Types ──────────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct BinaryInput {
+    a: f64,
+    b: f64,
+}
+
+#[derive(Deserialize)]
+struct SqrtInput {
+    n: f64,
+}
+
+#[derive(Deserialize)]
+struct TextInput {
+    text: String,
+}
+
+#[derive(Deserialize)]
+struct EchoInput {
+    message: String,
+}
+
+// ─── Schema Helpers ───────────────────────────────────────────────────────────
+
+fn binary_schema() -> Value {
+    serde_json::json!({
+        "type": "object",
+        "properties": {
+            "a": { "type": "number", "description": "First operand" },
+            "b": { "type": "number", "description": "Second operand" }
+        },
+        "required": ["a", "b"]
+    })
+}
+
+fn text_schema() -> Value {
+    serde_json::json!({
+        "type": "object",
+        "properties": {
+            "text": { "type": "string", "description": "Input text" }
+        },
+        "required": ["text"]
+    })
+}
+
+// ─── Cloudflare Workers Entry Point ───────────────────────────────────────────
 
 #[event(fetch)]
 pub async fn main(mut req: Request, _env: Env, _ctx: Context) -> Result<Response> {
     let method = req.method();
     let path = req.path();
 
-    // ── CORS preflight ────────────────────────────────────────────────────────
+    // CORS preflight
     if method == Method::Options {
-        return Ok(cors_headers(Response::empty()?));
+        return Ok(cors_response(Response::empty()?));
     }
 
     match (method, path.as_str()) {
-        // ── POST /mcp — main JSON-RPC endpoint ────────────────────────────────
+        // POST /mcp — JSON-RPC endpoint
         (Method::Post, "/mcp") => {
             let msg: JsonRpcMessage = req
                 .json()
@@ -465,59 +776,71 @@ pub async fn main(mut req: Request, _env: Env, _ctx: Context) -> Result<Response
 
             match response {
                 Some(resp) => {
-                    let body = serde_json::to_string(&resp)
-                        .map_err(|e| Error::RustError(e.to_string()))?;
-                    let mut headers = Headers::new();
-                    headers.set("content-type", "application/json")?;
-                    headers.set("access-control-allow-origin", "*")?;
-                    Ok(Response::ok(body)?.with_headers(headers))
+                    let body =
+                        serde_json::to_string(&resp).map_err(|e| Error::RustError(e.to_string()))?;
+                    Ok(cors_response(
+                        Response::ok(body)?.with_headers(json_headers()),
+                    ))
                 }
-                // Notification — no response body
-                None => {
-                    let mut headers = Headers::new();
-                    headers.set("access-control-allow-origin", "*")?;
-                    Ok(Response::empty()?.with_status(202).with_headers(headers))
-                }
+                None => Ok(cors_response(Response::empty()?.with_status(202))),
             }
         }
 
-        // ── GET /mcp — server info & discovery ───────────────────────────────
+        // GET /mcp — Server discovery
         (Method::Get, "/mcp") => {
             let server = get_server();
             let body = serde_json::json!({
-                "name":        server.info.name,
-                "version":     server.info.version,
-                "transport":   "streamable-http",
-                "endpoint":    "/mcp",
+                "name": server.info.name,
+                "version": server.info.version,
+                "protocol_version": MCP_PROTOCOL_VERSION,
+                "transport": "streamable-http",
+                "endpoint": "/mcp",
+                "capabilities": {
+                    "tools": !server.tools.is_empty(),
+                    "resources": !server.resources.is_empty() || !server.resource_templates.is_empty(),
+                    "prompts": !server.prompts.is_empty()
+                }
             });
-            let mut headers = Headers::new();
-            headers.set("content-type", "application/json")?;
-            headers.set("access-control-allow-origin", "*")?;
-            Ok(Response::from_json(&body)?.with_headers(headers))
+            Ok(cors_response(
+                Response::from_json(&body)?.with_headers(json_headers()),
+            ))
         }
+
+        // Health check
+        (Method::Get, "/health") => Ok(cors_response(Response::ok("OK")?)),
 
         _ => Response::error("Not Found", 404),
     }
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-fn cors_headers(mut resp: Response) -> Response {
+fn json_headers() -> Headers {
+    let mut h = Headers::new();
+    let _ = h.set("content-type", "application/json");
+    h
+}
+
+fn cors_response(resp: Response) -> Response {
     let mut h = Headers::new();
     let _ = h.set("access-control-allow-origin", "*");
     let _ = h.set("access-control-allow-methods", "GET, POST, OPTIONS");
-    let _ = h.set("access-control-allow-headers", "content-type");
+    let _ = h.set(
+        "access-control-allow-headers",
+        "content-type, authorization",
+    );
+    let _ = h.set("access-control-max-age", "86400");
     resp.with_headers(h)
 }
 
-/// Simple URI template matcher — supports {variable} placeholders.
+/// Simple URI template matcher — supports `{variable}` placeholders.
 fn uri_matches_template(uri: &str, template: &str) -> bool {
     let mut uri_chars = uri.chars().peekable();
     let mut tpl_chars = template.chars().peekable();
 
     while let Some(&tc) = tpl_chars.peek() {
         if tc == '{' {
-            // Skip variable name
+            // Skip variable name until '}'
             while tpl_chars.next().map(|c| c != '}').unwrap_or(false) {}
             // Consume non-'/' characters in uri
             if uri_chars.peek().is_none() {
