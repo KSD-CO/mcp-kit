@@ -17,14 +17,19 @@ MCP enables AI assistants to securely access tools, data sources, and prompts th
 - 🚀 **Async-first** — Built on Tokio for high-performance concurrent operations
 - 🛡️ **Type-safe** — Leverage Rust's type system with automatic JSON Schema generation
 - 🎯 **Ergonomic macros** — `#[tool]`, `#[resource]`, `#[prompt]` attributes for minimal boilerplate
-- 🔌 **Multiple transports** — stdio (default), SSE/HTTP, and HTTPS/TLS support
+- 🔌 **Multiple transports** — stdio (default), SSE/HTTP, WebSocket, and HTTPS/TLS support
 - 🔐 **Authentication** — Bearer, API Key, Basic, OAuth 2.0, and mTLS support
 - 📝 **Completion** — Auto-complete argument values for prompts and resources
 - 📊 **Progress tracking** — Report progress for long-running operations
 - 📢 **Notifications** — Push updates to clients (resource changes, log messages)
-- 🧩 **Modular** — Feature-gated architecture, WASM-compatible core
+- 🔄 **Subscriptions** — Subscribe to resource changes for real-time updates
+- ⛔ **Cancellation** — Cancel long-running requests
+- � **Sampling** — Server-initiated LLM requests to clients
+- 📁 **Roots** — File system sandboxing with client-provided roots
+- �🧩 **Modular** — Feature-gated architecture, WASM-compatible core
 - 📦 **Batteries included** — State management, error handling, tracing integration
 - 🎨 **Flexible APIs** — Choose between macro-based or manual builder patterns
+- 📡 **Client SDK** — `mcp-kit-client` crate for connecting to MCP servers
 
 ---
 
@@ -238,6 +243,21 @@ let tls = TlsConfig::builder()
     .build()?;
 
 server.serve_tls("0.0.0.0:8443".parse()?, tls).await?;
+```
+
+### WebSocket
+
+Bidirectional WebSocket transport for real-time communication:
+
+```rust
+// Requires the "websocket" feature
+server.serve_websocket("0.0.0.0:3001".parse()?).await?;
+```
+
+Enable in `Cargo.toml`:
+```toml
+[dependencies]
+mcp-kit = { version = "0.1", features = ["websocket"] }
 ```
 
 ---
@@ -700,6 +720,9 @@ cargo run --example showcase
 # Showcase with SSE transport on port 3000
 cargo run --example showcase -- --sse
 
+# WebSocket transport example
+cargo run --example websocket
+
 # Macro-specific examples
 cargo run --example macros_demo
 
@@ -716,6 +739,9 @@ cargo run --example auth_basic --features auth-full
 cargo run --example auth_composite --features auth-full
 cargo run --example auth_oauth2 --features auth-oauth2
 cargo run --example auth_mtls --features auth-mtls
+
+# Client SDK example (requires running server first)
+cargo run -p mcp-kit-client --example client_demo
 ```
 
 **Example Features:**
@@ -725,12 +751,15 @@ cargo run --example auth_mtls --features auth-mtls
 - ✅ Argument completion (auto-complete)
 - ✅ Notifications (resource updates, logging)
 - ✅ Progress tracking for long operations
+- ✅ Resource subscriptions
+- ✅ Request cancellation
 - ✅ Error handling patterns
 - ✅ State sharing between requests
 - ✅ JSON content types
-- ✅ Both stdio and SSE transports
+- ✅ Stdio, SSE, and WebSocket transports
 - ✅ Bearer, API Key, Basic, OAuth 2.0, mTLS authentication
 - ✅ Composite authentication (multiple methods)
+- ✅ Client SDK for connecting to servers
 
 Source code: [`examples/`](examples/)
 
@@ -750,6 +779,7 @@ mcp-kit = { version = "0.1", default-features = false, features = ["server", "st
 - `server` — Core server functionality
 - `stdio` — Standard I/O transport
 - `sse` — HTTP Server-Sent Events transport
+- `websocket` — WebSocket transport
 
 **Authentication features:**
 - `auth` — Core auth types and traits
@@ -776,12 +806,78 @@ mcp-kit/
 │   ├── types/           # MCP protocol types
 │   ├── server/          # Server implementation [feature = "server"]
 │   └── transport/       # Transport implementations
-└── macros/              # Procedural macros crate
+├── macros/              # Procedural macros crate
+└── client/              # Client SDK crate
 ```
 
 **Crate structure:**
-- `mcp-kit` — Main library
-- `mcp-kit-kit-macros` — Procedural macros (`#[tool]`, etc.)
+- `mcp-kit` — Main server library
+- `mcp-kit-macros` — Procedural macros (`#[tool]`, etc.)
+- `mcp-kit-client` — Client SDK for connecting to MCP servers
+
+---
+
+## Client SDK
+
+The `mcp-kit-client` crate provides a client library for connecting to MCP servers:
+
+```toml
+[dependencies]
+mcp-kit-client = "0.1"
+```
+
+### Quick Start
+
+```rust
+use mcp_kit_client::prelude::*;
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    // Connect via WebSocket
+    let client = McpClient::websocket("ws://localhost:3001/ws").await?;
+    
+    // Initialize connection
+    let server_info = client.initialize("my-app", "1.0.0").await?;
+    println!("Connected to: {}", server_info.name);
+    
+    // List and call tools
+    let tools = client.list_tools().await?;
+    let result = client.call_tool("greet", serde_json::json!({
+        "name": "World"
+    })).await?;
+    
+    Ok(())
+}
+```
+
+### Transport Options
+
+```rust
+// Stdio - spawn subprocess
+let client = McpClient::stdio("/path/to/mcp-server").await?;
+
+// SSE - HTTP Server-Sent Events
+let client = McpClient::sse("http://localhost:3000").await?;
+
+// WebSocket
+let client = McpClient::websocket("ws://localhost:3001/ws").await?;
+```
+
+### Available Operations
+
+| Method | Description |
+|--------|-------------|
+| `initialize()` | Initialize the MCP connection |
+| `list_tools()` | List available tools |
+| `call_tool()` | Call a tool with arguments |
+| `list_resources()` | List available resources |
+| `read_resource()` | Read a resource by URI |
+| `list_prompts()` | List available prompts |
+| `get_prompt()` | Get a prompt by name |
+| `subscribe()` | Subscribe to resource updates |
+| `unsubscribe()` | Unsubscribe from updates |
+
+See [`client/README.md`](client/README.md) for full documentation.
 
 ---
 

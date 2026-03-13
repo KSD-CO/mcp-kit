@@ -1,0 +1,52 @@
+[package]
+name        = "mcp-kit-client"
+version     = "0.1.0"
+edition     = "2021"
+authors     = ["Ton That Vu"]
+license     = "MIT"
+repository  = "https://github.com/KSD-CO/mcp-kit"
+homepage    = "https://github.com/KSD-CO/mcp-kit"
+rust-version = "1.85"
+description  = "MCP client SDK for connecting to Model Context Protocol servers"
+keywords     = ["mcp", "protocol", "llm", "ai", "client"]
+categories   = ["network-programming", "asynchronous"]
+
+[features]
+default = ["full"]
+full    = ["stdio", "sse", "websocket"]
+
+## Stdio transport (subprocess communication)
+stdio = ["dep:tokio-util", "dep:bytes"]
+
+## SSE transport (HTTP Server-Sent Events)
+sse = ["dep:reqwest", "dep:reqwest-eventsource"]
+
+## WebSocket transport
+websocket = ["dep:tokio-tungstenite"]
+
+[dependencies]
+# Core dependencies
+mcp-kit = { version = "0.1.5", path = "..", default-features = false }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tracing = "0.1"
+futures-util = "0.3"
+uuid = { version = "1.11", features = ["v4"] }
+async-trait = "0.1"
+
+# Feature-gated: stdio
+tokio-util = { version = "0.7", features = ["codec", "io"], optional = true }
+bytes = { version = "1", optional = true }
+
+# Feature-gated: sse
+reqwest = { version = "0.12", features = ["json"], default-features = false, optional = true }
+reqwest-eventsource = { version = "0.6", optional = true }
+
+# Feature-gated: websocket
+tokio-tungstenite = { version = "0.24", optional = true }
+
+[dev-dependencies]
+anyhow = "1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

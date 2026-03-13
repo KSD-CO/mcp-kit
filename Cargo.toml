@@ -1,11 +1,11 @@
 [workspace]
-members  = ["macros"]
+members  = ["macros", "client"]
 exclude  = ["deploy/cloudflare"]
 resolver = "2"
 
 [package]
 name        = "mcp-kit"
-version     = "0.1.4"
+version     = "0.1.5"
 edition     = "2021"
 authors     = ["Ton That Vu"]
 license     = "MIT"
