@@ -6,7 +6,7 @@ Essential information for AI coding agents working in the `mcp-kit` repository.
 
 **mcp-kit** is a Rust library for building MCP (Model Context Protocol) servers with an ergonomic, type-safe, async-first API.
 
-- **Language:** Rust (Edition 2021, MSRV 1.80)
+- **Language:** Rust (Edition 2021, MSRV 1.85)
 - **License:** MIT
 - **Architecture:** Modular, feature-gated library (core types are WASM-safe)
 - **Core deps:** `serde`, `serde_json`, `thiserror`, `tracing`, `schemars`
@@ -185,7 +185,7 @@ RUST_BACKTRACE=1 cargo run
 
 ## Important Notes
 
-1. **MSRV:** 1.75 - don't use features from newer Rust versions
+1. **MSRV:** 1.85 - don't use features from newer Rust versions
 2. **WASM-safe:** Core types (`error`, `protocol`, `types`) must remain WASM-safe
 3. **Dependencies:** Minimize new deps; prefer std/core when possible
 4. **CI:** All PRs must pass fmt, clippy, tests on Ubuntu/macOS/Windows
