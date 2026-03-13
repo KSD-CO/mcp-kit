@@ -97,7 +97,7 @@ pub async fn auth_middleware(
 /// handler, because Axum exposes query params after routing.
 pub fn extract_credentials(
     headers: &HeaderMap,
-    extensions: &axum::http::Extensions,
+    #[allow(unused_variables)] extensions: &axum::http::Extensions,
 ) -> Credentials {
     // mTLS peer certificate takes highest precedence.
     #[cfg(feature = "auth-mtls")]

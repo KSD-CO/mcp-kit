@@ -93,6 +93,32 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 schemars           = { version = "0.8", features = ["derive"] }
 serde              = { version = "1", features = ["derive"] }
 
+# ─── Examples ─────────────────────────────────────────────────────────────────
+
+[[example]]
+name = "auth_oauth2"
+required-features = ["auth-oauth2", "sse"]
+
+[[example]]
+name = "auth_mtls"
+required-features = ["auth-mtls"]
+
+[[example]]
+name = "auth_bearer"
+required-features = ["auth-bearer", "sse"]
+
+[[example]]
+name = "auth_apikey"
+required-features = ["auth-apikey", "sse"]
+
+[[example]]
+name = "auth_basic"
+required-features = ["auth-basic", "sse"]
+
+[[example]]
+name = "auth_composite"
+required-features = ["auth-full", "sse"]
+
 [profile.release]
 opt-level     = 3
 lto           = true
