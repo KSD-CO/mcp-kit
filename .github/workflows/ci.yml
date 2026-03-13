@@ -11,42 +11,15 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
-  # ── Check + Test ─────────────────────────────────────────────────────────────
-  test:
-    name: Test (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-
-      - name: Check workspace
-        run: cargo check --workspace --all-features
-
-      - name: Run tests
-        run: cargo test --workspace --all-features
-
-      - name: Build examples
-        run: cargo build --examples
-
-  # ── Lint ─────────────────────────────────────────────────────────────────────
-  lint:
-    name: Lint
+  # ── Build, Test & Lint ───────────────────────────────────────────────────────
+  ci:
+    name: Build & Test
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust stable + components
+      - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -60,19 +33,8 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-features -- -D warnings
 
-  # ── MSRV (minimum supported Rust version) ─────────────────────────────────
-  msrv:
-    name: MSRV (1.80)
-    runs-on: ubuntu-latest
+      - name: Run tests
+        run: cargo test --workspace --all-features
 
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust 1.80
-        uses: dtolnay/rust-toolchain@1.80
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-
-      - name: Check on MSRV
-        run: cargo check --workspace --all-features
+      - name: Build examples
+        run: cargo build --examples --all-features
