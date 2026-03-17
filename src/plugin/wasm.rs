@@ -32,24 +32,74 @@
 use crate::error::{McpError, McpResult};
 use crate::plugin::McpPlugin;
 
+#[cfg(feature = "plugin-wasm")]
+use wasmtime::{Engine, Module};
+
+/// WASM Plugin implementation
+#[cfg(feature = "plugin-wasm")]
+pub struct WasmPlugin {
+    name: String,
+    version: String,
+    // These will be used for plugin execution in future iterations
+    #[allow(dead_code)]
+    engine: Engine,
+    #[allow(dead_code)]
+    module: Module,
+}
+
+#[cfg(feature = "plugin-wasm")]
+impl McpPlugin for WasmPlugin {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn version(&self) -> &str {
+        &self.version
+    }
+}
+
 /// Load a plugin from WASM bytes
 ///
-/// **Note:** This is currently a placeholder. Full WASM plugin support
-/// is coming in a future release.
+/// **Note:** This is a minimal implementation for basic loading.
+/// Advanced features like sandboxing and WASI will be added later.
+#[cfg(feature = "plugin-wasm")]
+pub fn load_plugin(wasm_bytes: &[u8]) -> McpResult<Box<dyn McpPlugin>> {
+    let engine = Engine::default();
+    let module = Module::from_binary(&engine, wasm_bytes)
+        .map_err(|e| McpError::internal(format!("Failed to load WASM module: {}", e)))?;
+
+    let plugin = WasmPlugin {
+        name: "wasm-plugin".to_string(),
+        version: "0.1.0".to_string(),
+        engine,
+        module,
+    };
+
+    Ok(Box::new(plugin))
+}
+
+/// Load a plugin from WASM bytes (fallback for non-WASM builds)
+#[cfg(not(feature = "plugin-wasm"))]
 pub fn load_plugin(_wasm_bytes: &[u8]) -> McpResult<Box<dyn McpPlugin>> {
     Err(McpError::internal(
-        "WASM plugin loading is under development. \
-         Use native plugins (plugin-native feature) in the meantime. \
-         See https://github.com/KSD-CO/mcp-kit/issues for progress."
+        "WASM plugin loading requires 'plugin-wasm' feature. \
+         Enable it in your Cargo.toml: features = ['plugin-wasm']"
             .to_string(),
     ))
 }
 
 /// Load a plugin from WASM bytes with configuration
-///
-/// Note: WASM plugin support is planned but not yet implemented. This function
-/// is coming in a future release.
-#[allow(dead_code)]
+#[cfg(feature = "plugin-wasm")]
+pub fn load_plugin_with_config(
+    wasm_bytes: &[u8],
+    _config: &crate::plugin::PluginConfig,
+) -> McpResult<Box<dyn McpPlugin>> {
+    // For now, ignore config and use basic loading
+    load_plugin(wasm_bytes)
+}
+
+/// Load a plugin from WASM bytes with configuration (fallback)
+#[cfg(not(feature = "plugin-wasm"))]
 pub fn load_plugin_with_config(
     _wasm_bytes: &[u8],
     _config: &crate::plugin::PluginConfig,
@@ -91,3 +141,24 @@ pub fn load_plugin_with_config(
 // - https://docs.wasmtime.dev/
 // - https://github.com/bytecodealliance/wasmtime
 // - The native plugin implementation in native.rs for reference
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_load_plugin_from_valid_wasm_bytes() {
+        // A minimal valid WASM module (wat format: empty module)
+        // (module) 
+        let valid_wasm_bytes = vec![
+            0x00, 0x61, 0x73, 0x6d, // WASM magic number
+            0x01, 0x00, 0x00, 0x00, // WASM version
+        ];
+
+        let result = load_plugin(&valid_wasm_bytes);
+        assert!(result.is_ok(), "Expected plugin to load from valid WASM bytes");
+        
+        let plugin = result.unwrap();
+        assert_eq!(plugin.name(), "wasm-plugin", "Plugin should have a default name");
+    }
+}
