@@ -123,7 +123,7 @@
 //! 4. Your WASM code can read the string from memory
 //!
 //! **Memory Layout:**
-//! ```
+//! ```text
 //! Offset 0-1023:    Reserved/stack space
 //! Offset 1024+:     String parameters (256 bytes each)
 //! ```
