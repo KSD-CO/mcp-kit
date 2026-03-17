@@ -80,14 +80,13 @@ impl McpPlugin for WasmPlugin {
                 let module = self.module.clone();
                 let func_name = name.to_string();
                 
-                let handler = Arc::new(move |_req: CallToolRequest| {
+                let handler = Arc::new(move |req: CallToolRequest| {
                     let engine = engine.clone();
                     let module = module.clone();
                     let func_name = func_name.clone();
                     
                     Box::pin(async move {
                         // TODO: Optimize by caching Store/Instance instead of creating new ones
-                        // TODO: Support functions with parameters from CallToolRequest.arguments  
                         // TODO: Support different return types based on function signature
                         
                         // Create store and instance for this execution
@@ -100,9 +99,27 @@ impl McpPlugin for WasmPlugin {
                             .get_func(&mut store, &func_name)
                             .ok_or_else(|| McpError::internal(format!("Function '{}' not found", func_name)))?;
                         
-                        // Call function (currently assumes no params, single return value)
+                        // Extract parameters from request arguments  
+                        let mut params = Vec::new();
+                        if let Some(arguments) = req.arguments.as_object() {
+                            // Look for parameters named param0, param1, param2, etc.
+                            let mut param_index = 0;
+                            while let Some(param_value) = arguments.get(&format!("param{}", param_index)) {
+                                // Convert JSON value to WASM value (currently only supports i32)
+                                if let Some(int_val) = param_value.as_i64() {
+                                    params.push(wasmtime::Val::I32(int_val as i32));
+                                } else {
+                                    return Err(McpError::internal(
+                                        format!("Parameter param{} must be an integer", param_index)
+                                    ));
+                                }
+                                param_index += 1;
+                            }
+                        }
+                        
+                        // Call function with extracted parameters
                         let mut results = [wasmtime::Val::I32(0)];
-                        func.call(&mut store, &[], &mut results)
+                        func.call(&mut store, &params, &mut results)
                             .map_err(|e| McpError::internal(format!("WASM function call failed: {}", e)))?;
                         
                         // Convert result to string based on WASM value type
@@ -283,6 +300,47 @@ mod tests {
         assert_eq!(result.content.len(), 1, "Should have one content item");
         if let crate::types::content::Content::Text(text_content) = &result.content[0] {
             assert_eq!(text_content.text, "42", "WASM function should return actual result, not placeholder");
+        } else {
+            panic!("Expected text content");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_wasm_function_with_parameters() {
+        // A WASM function that takes two i32 parameters and returns their sum
+        let wat_source = r#"
+            (module
+              (func (export "add") (param i32 i32) (result i32)
+                local.get 0
+                local.get 1
+                i32.add))
+        "#;
+        
+        #[cfg(test)]
+        let wasm_bytes = wat::parse_str(wat_source).expect("Failed to parse WAT");
+
+        let plugin = load_plugin(&wasm_bytes).unwrap();
+        let tools = plugin.register_tools();
+        
+        assert_eq!(tools.len(), 1, "Should have exactly one tool");
+        assert_eq!(tools[0].tool.name, "add");
+        
+        // Execute with parameters: add(15, 27) should return 42
+        let handler = &tools[0].handler;
+        let request = crate::types::messages::CallToolRequest {
+            name: "add".to_string(),
+            arguments: serde_json::json!({
+                "param0": 15,
+                "param1": 27
+            }),
+        };
+        
+        let result = handler(request).await.expect("Tool execution should succeed");
+        
+        // Should return "42" (15 + 27)
+        assert_eq!(result.content.len(), 1, "Should have one content item");
+        if let crate::types::content::Content::Text(text_content) = &result.content[0] {
+            assert_eq!(text_content.text, "42", "WASM function should compute 15 + 27 = 42");
         } else {
             panic!("Expected text content");
         }
