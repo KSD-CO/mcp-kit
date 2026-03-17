@@ -99,19 +99,74 @@ impl McpPlugin for WasmPlugin {
                             .get_func(&mut store, &func_name)
                             .ok_or_else(|| McpError::internal(format!("Function '{}' not found", func_name)))?;
                         
-                        // Extract parameters from request arguments  
+                        // Get function type to determine expected parameter types
+                        let func_type = func.ty(&store);
+                        let param_types: Vec<_> = func_type.params().collect();
+                        
+                        // Extract parameters from request arguments with type matching
                         let mut params = Vec::new();
                         if let Some(arguments) = req.arguments.as_object() {
-                            // Look for parameters named param0, param1, param2, etc.
+                            // Process parameters in order: param0, param1, param2, etc.
                             let mut param_index = 0;
                             while let Some(param_value) = arguments.get(&format!("param{}", param_index)) {
-                                // Convert JSON value to WASM value (currently only supports i32)
-                                if let Some(int_val) = param_value.as_i64() {
-                                    params.push(wasmtime::Val::I32(int_val as i32));
+                                // Use WASM function signature to determine correct parameter type
+                                if let Some(expected_type) = param_types.get(param_index) {
+                                    let wasm_val = match expected_type {
+                                        wasmtime::ValType::I32 => {
+                                            if let Some(int_val) = param_value.as_i64() {
+                                                wasmtime::Val::I32(int_val as i32)
+                                            } else {
+                                                return Err(McpError::internal(
+                                                    format!("Parameter param{} must be an integer for i32", param_index)
+                                                ));
+                                            }
+                                        }
+                                        wasmtime::ValType::I64 => {
+                                            if let Some(int_val) = param_value.as_i64() {
+                                                wasmtime::Val::I64(int_val)
+                                            } else {
+                                                return Err(McpError::internal(
+                                                    format!("Parameter param{} must be an integer for i64", param_index)
+                                                ));
+                                            }
+                                        }
+                                        wasmtime::ValType::F32 => {
+                                            if let Some(float_val) = param_value.as_f64() {
+                                                wasmtime::Val::F32((float_val as f32).to_bits())
+                                            } else {
+                                                return Err(McpError::internal(
+                                                    format!("Parameter param{} must be a float for f32", param_index)
+                                                ));
+                                            }
+                                        }
+                                        wasmtime::ValType::F64 => {
+                                            if let Some(float_val) = param_value.as_f64() {
+                                                wasmtime::Val::F64(float_val.to_bits())
+                                            } else {
+                                                return Err(McpError::internal(
+                                                    format!("Parameter param{} must be a float for f64", param_index)
+                                                ));
+                                            }
+                                        }
+                                        _ => {
+                                            return Err(McpError::internal(
+                                                format!("Unsupported parameter type for param{}", param_index)
+                                            ));
+                                        }
+                                    };
+                                    params.push(wasm_val);
                                 } else {
-                                    return Err(McpError::internal(
-                                        format!("Parameter param{} must be an integer", param_index)
-                                    ));
+                                    // No type info available - fallback to heuristic (for backward compatibility)
+                                    let wasm_val = if let Some(int_val) = param_value.as_i64() {
+                                        wasmtime::Val::I32(int_val as i32)
+                                    } else if let Some(float_val) = param_value.as_f64() {
+                                        wasmtime::Val::F32((float_val as f32).to_bits())
+                                    } else {
+                                        return Err(McpError::internal(
+                                            format!("Parameter param{} must be a number", param_index)
+                                        ));
+                                    };
+                                    params.push(wasm_val);
                                 }
                                 param_index += 1;
                             }
@@ -126,8 +181,14 @@ impl McpPlugin for WasmPlugin {
                         let result_str = match &results[0] {
                             wasmtime::Val::I32(val) => val.to_string(),
                             wasmtime::Val::I64(val) => val.to_string(),
-                            wasmtime::Val::F32(val) => val.to_string(), 
-                            wasmtime::Val::F64(val) => val.to_string(),
+                            wasmtime::Val::F32(bits) => {
+                                // Convert from bit representation back to f32
+                                f32::from_bits(*bits).to_string()
+                            },
+                            wasmtime::Val::F64(bits) => {
+                                // Convert from bit representation back to f64
+                                f64::from_bits(*bits).to_string()
+                            },
                             _ => "unsupported_type".to_string(),
                         };
                         
@@ -341,6 +402,89 @@ mod tests {
         assert_eq!(result.content.len(), 1, "Should have one content item");
         if let crate::types::content::Content::Text(text_content) = &result.content[0] {
             assert_eq!(text_content.text, "42", "WASM function should compute 15 + 27 = 42");
+        } else {
+            panic!("Expected text content");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_wasm_function_with_f32_parameters() {
+        // A WASM function that takes two f32 parameters and returns their product
+        let wat_source = r#"
+            (module
+              (func (export "multiply") (param f32 f32) (result f32)
+                local.get 0
+                local.get 1
+                f32.mul))
+        "#;
+        
+        #[cfg(test)]
+        let wasm_bytes = wat::parse_str(wat_source).expect("Failed to parse WAT");
+
+        let plugin = load_plugin(&wasm_bytes).unwrap();
+        let tools = plugin.register_tools();
+        
+        assert_eq!(tools.len(), 1, "Should have exactly one tool");
+        assert_eq!(tools[0].tool.name, "multiply");
+        
+        // Execute with f32 parameters: multiply(3.5, 2.0) should return 7.0
+        let handler = &tools[0].handler;
+        let request = crate::types::messages::CallToolRequest {
+            name: "multiply".to_string(),
+            arguments: serde_json::json!({
+                "param0": 3.5,
+                "param1": 2.0
+            }),
+        };
+        
+        let result = handler(request).await.expect("Tool execution should succeed");
+        
+        // Should return "7" (3.5 * 2.0 = 7.0)
+        assert_eq!(result.content.len(), 1, "Should have one content item");
+        if let crate::types::content::Content::Text(text_content) = &result.content[0] {
+            assert_eq!(text_content.text, "7", "WASM function should compute 3.5 * 2.0 = 7");
+        } else {
+            panic!("Expected text content");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_wasm_function_with_f64_parameters() {
+        // A WASM function that takes two f64 parameters for high precision
+        let wat_source = r#"
+            (module
+              (func (export "divide") (param f64 f64) (result f64)
+                local.get 0
+                local.get 1
+                f64.div))
+        "#;
+        
+        #[cfg(test)]
+        let wasm_bytes = wat::parse_str(wat_source).expect("Failed to parse WAT");
+
+        let plugin = load_plugin(&wasm_bytes).unwrap();
+        let tools = plugin.register_tools();
+        
+        assert_eq!(tools.len(), 1, "Should have exactly one tool");
+        assert_eq!(tools[0].tool.name, "divide");
+        
+        // Execute with f64 parameters: divide(10.0, 3.0) should return ~3.333...
+        let handler = &tools[0].handler;
+        let request = crate::types::messages::CallToolRequest {
+            name: "divide".to_string(),
+            arguments: serde_json::json!({
+                "param0": 10.0,
+                "param1": 3.0
+            }),
+        };
+        
+        let result = handler(request).await.expect("Tool execution should succeed");
+        
+        // Should return approximately "3.3333333333333335" (10.0 / 3.0)
+        assert_eq!(result.content.len(), 1, "Should have one content item");
+        if let crate::types::content::Content::Text(text_content) = &result.content[0] {
+            let result_val: f64 = text_content.text.parse().expect("Should be a valid f64");
+            assert!((result_val - 10.0/3.0).abs() < 1e-10, "WASM function should compute 10.0 / 3.0 with f64 precision");
         } else {
             panic!("Expected text content");
         }
