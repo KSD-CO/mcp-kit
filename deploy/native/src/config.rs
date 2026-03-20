@@ -11,7 +11,7 @@ use crate::infrastructure::clickhouse::ClickHouseConfig;
 #[derive(Parser, Debug)]
 #[command(
     name = "mcp-gateway",
-    about = "MCP Gateway — aggregates ClickHouse (internal) + Grafana (external) tools"
+    about = "MCP Gateway — aggregates ClickHouse (internal) + Grafana + Confluence (external) tools"
 )]
 pub struct Cli {
     /// Transport: stdio, sse, ws
@@ -64,6 +64,32 @@ pub struct Cli {
     /// Set to empty string to disable prefixing.
     #[arg(long, env = "GRAFANA_PREFIX", default_value = "grafana")]
     pub grafana_prefix: String,
+
+    // ── Confluence / Atlassian (external upstream via mcp-atlassian) ──
+    /// Confluence instance URL. When set, the gateway spawns mcp-atlassian and
+    /// proxies its Confluence tools (search, read/create/update pages, comments, etc.)
+    /// through this gateway.
+    #[arg(long, env = "CONFLUENCE_URL")]
+    pub confluence_url: Option<String>,
+
+    /// Confluence username (email for Cloud, username for Server/DC).
+    #[arg(long, env = "CONFLUENCE_USERNAME")]
+    pub confluence_username: Option<String>,
+
+    /// Confluence API token (Cloud) or Personal Access Token (Server/DC).
+    #[arg(long, env = "CONFLUENCE_API_TOKEN")]
+    pub confluence_api_token: Option<String>,
+
+    /// Path to mcp-atlassian binary. Defaults to "uvx" which auto-downloads
+    /// the mcp-atlassian package. Set to e.g. "/usr/local/bin/mcp-atlassian"
+    /// to use a pre-installed binary.
+    #[arg(long, env = "CONFLUENCE_MCP_BIN", default_value = "uvx")]
+    pub confluence_mcp_bin: String,
+
+    /// Prefix for Confluence tools (e.g. "confluence" → tools become "confluence/confluence_search").
+    /// Set to empty string to disable prefixing.
+    #[arg(long, env = "CONFLUENCE_PREFIX", default_value = "confluence")]
+    pub confluence_prefix: String,
 }
 
 impl Cli {
@@ -82,6 +108,11 @@ impl Cli {
     /// Whether the Grafana upstream is configured.
     pub fn grafana_enabled(&self) -> bool {
         self.grafana_url.is_some()
+    }
+
+    /// Whether the Confluence upstream is configured.
+    pub fn confluence_enabled(&self) -> bool {
+        self.confluence_url.is_some()
     }
 
     /// Build a [`ClickHouseConfig`] by merging CLI args (higher priority) with env vars.

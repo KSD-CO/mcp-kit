@@ -1,21 +1,22 @@
-# MCP Gateway — ClickHouse + Grafana
+# MCP Gateway — ClickHouse + Grafana + Confluence
 
 An MCP gateway server built with `mcp-kit` that aggregates multiple backends through a single endpoint:
 
 - **ClickHouse** (internal) — direct HTTP connection, no proxy overhead
 - **Grafana** (external) — proxied from [mcp-grafana](https://github.com/grafana/mcp-grafana) via `mcp-kit-gateway`
+- **Confluence** (external) — proxied from [mcp-atlassian](https://github.com/sooperset/mcp-atlassian) via `mcp-kit-gateway`
 
 ## Architecture
 
 ```
-┌──────────────┐        ┌──────────────────────────────┐        ┌───────────────────┐
-│  AI Agent    │        │         mcp-gateway           │ stdio  │   mcp-grafana     │
-│  (Claude,    │ ─────> │                              │ ─────> │   (external)      │
-│   Cursor)    │        │  ┌────────────────────────┐  │        │ - dashboards      │
-│              │        │  │ ClickHouse (internal)  │  │        │ - datasources     │
-│              │        │  │ direct HTTP, no proxy  │──│──>     │ - alerting        │
-│              │        │  └────────────────────────┘  │   CH   │ - Prometheus/Loki │
-└──────────────┘        └──────────────────────────────┘  :8123 └───────────────────┘
+┌──────────────┐        ┌──────────────────────────────┐  stdio  ┌───────────────────┐
+│  AI Agent    │        │         mcp-gateway           │ ──────> │   mcp-grafana     │
+│  (Claude,    │ ─────> │                              │         │   (external)      │
+│   Cursor)    │        │  ┌────────────────────────┐  │  stdio  ├───────────────────┤
+│              │        │  │ ClickHouse (internal)  │  │ ──────> │   mcp-atlassian   │
+│              │        │  │ direct HTTP, no proxy  │──│──> CH   │   (Confluence)    │
+│              │        │  └────────────────────────┘  │  :8123  └───────────────────┘
+└──────────────┘        └──────────────────────────────┘
 ```
 
 **Internal backends** are implemented directly in this binary (ClickHouse via HTTP client). No proxy overhead, no subprocess.
@@ -52,6 +53,7 @@ src/
 - [Rust](https://rustup.rs/) 1.85+
 - A running ClickHouse instance with HTTP interface enabled (default port `8123`)
 - (Optional) [Grafana](https://grafana.com/) instance + [mcp-grafana](https://github.com/grafana/mcp-grafana)
+- (Optional) Confluence Cloud or Server/DC account + API token — [mcp-atlassian](https://github.com/sooperset/mcp-atlassian) is auto-downloaded via `uvx`
 
 ## Build
 
@@ -79,6 +81,21 @@ CLICKHOUSE_URL=http://localhost:8123 \
 GRAFANA_URL=http://localhost:3000 \
 GRAFANA_SERVICE_ACCOUNT_TOKEN=<your-token> \
   mcp-gateway --transport sse --port 3000
+
+# ClickHouse + Confluence
+CLICKHOUSE_URL=http://localhost:8123 \
+CONFLUENCE_URL=https://your-company.atlassian.net/wiki \
+CONFLUENCE_USERNAME=your.email@company.com \
+CONFLUENCE_API_TOKEN=<your-token> \
+  mcp-gateway
+
+# All backends
+GRAFANA_URL=http://localhost:3000 \
+GRAFANA_SERVICE_ACCOUNT_TOKEN=<your-token> \
+CONFLUENCE_URL=https://your-company.atlassian.net/wiki \
+CONFLUENCE_USERNAME=your.email@company.com \
+CONFLUENCE_API_TOKEN=<your-token> \
+  mcp-gateway --transport sse --port 3000
 ```
 
 ## Configuration
@@ -99,6 +116,12 @@ Configure via environment variables or CLI flags. CLI flags take priority over e
 | `GRAFANA_SERVICE_ACCOUNT_TOKEN` | *(none)* | Service account token |
 | `GRAFANA_MCP_BIN` | `uvx` | mcp-grafana binary or `uvx` (auto-download) |
 | `GRAFANA_PREFIX` | `grafana` | Tool name prefix |
+| **Confluence (external)** | | |
+| `CONFLUENCE_URL` | *(none)* | Confluence URL — enables Confluence upstream |
+| `CONFLUENCE_USERNAME` | *(none)* | Username/email (Cloud) or username (Server/DC) |
+| `CONFLUENCE_API_TOKEN` | *(none)* | API token (Cloud) or Personal Access Token (Server/DC) |
+| `CONFLUENCE_MCP_BIN` | `uvx` | mcp-atlassian binary or `uvx` (auto-download) |
+| `CONFLUENCE_PREFIX` | `confluence` | Tool name prefix |
 | **General** | | |
 | `RUST_LOG` | `mcp_gateway=info` | Log level (tracing filter) |
 
@@ -110,8 +133,15 @@ CLICKHOUSE_URL=http://your-clickhouse-host:8123
 CLICKHOUSE_USER=your_user
 CLICKHOUSE_PASSWORD=your_password
 CLICKHOUSE_DATABASE=your_database
+
+# Grafana upstream (optional — remove to disable)
 GRAFANA_URL=http://localhost:3000
 GRAFANA_SERVICE_ACCOUNT_TOKEN=glsa_xxxxxxxxxxxx
+
+# Confluence upstream (optional — remove to disable)
+CONFLUENCE_URL=https://your-company.atlassian.net/wiki
+CONFLUENCE_USERNAME=your.email@company.com
+CONFLUENCE_API_TOKEN=your_api_token
 ```
 
 ### CLI Flags
@@ -120,23 +150,30 @@ GRAFANA_SERVICE_ACCOUNT_TOKEN=glsa_xxxxxxxxxxxx
 mcp-gateway [OPTIONS]
 
 Options:
-  -t, --transport <TRANSPORT>  Transport: stdio, sse, ws [default: stdio]
-  -p, --port <PORT>            Port for SSE/WebSocket [default: 3000]
-      --env-file <FILE>        Path to .env file (overrides auto-detection)
+  -t, --transport <TRANSPORT>       Transport: stdio, sse, ws [default: stdio]
+  -p, --port <PORT>                 Port for SSE/WebSocket [default: 3000]
+      --env-file <FILE>             Path to .env file (overrides auto-detection)
 
   ClickHouse (internal):
-      --url <URL>              ClickHouse HTTP URL (overrides env)
-      --user <USER>            ClickHouse user (overrides env)
-      --password <PASSWORD>    ClickHouse password (overrides env)
-      --database <DATABASE>    ClickHouse database (overrides env)
+      --url <URL>                   ClickHouse HTTP URL (overrides env)
+      --user <USER>                 ClickHouse user (overrides env)
+      --password <PASSWORD>         ClickHouse password (overrides env)
+      --database <DATABASE>         ClickHouse database (overrides env)
 
   Grafana (external):
-      --grafana-url <URL>      Grafana instance URL (enables upstream)
-      --grafana-token <TOKEN>  Service account token
-      --grafana-mcp-bin <BIN>  mcp-grafana binary path [default: uvx]
-      --grafana-prefix <PFX>   Tool name prefix [default: grafana]
+      --grafana-url <URL>           Grafana instance URL (enables upstream)
+      --grafana-token <TOKEN>       Service account token
+      --grafana-mcp-bin <BIN>       mcp-grafana binary path [default: uvx]
+      --grafana-prefix <PFX>        Tool name prefix [default: grafana]
 
-  -h, --help                   Print help
+  Confluence (external):
+      --confluence-url <URL>        Confluence instance URL (enables upstream)
+      --confluence-username <USER>  Confluence username/email
+      --confluence-api-token <TOK>  API token or Personal Access Token
+      --confluence-mcp-bin <BIN>    mcp-atlassian binary path [default: uvx]
+      --confluence-prefix <PFX>     Tool name prefix [default: confluence]
+
+  -h, --help                        Print help
 ```
 
 **Config priority** (highest to lowest): CLI flags > env vars > `.env` file > defaults
@@ -150,9 +187,12 @@ Options:
 CLICKHOUSE_URL=http://localhost:8123 \
   mcp-gateway
 
-# ClickHouse + Grafana
+# ClickHouse + Grafana + Confluence
 GRAFANA_URL=http://localhost:3000 \
 GRAFANA_SERVICE_ACCOUNT_TOKEN=<your-token> \
+CONFLUENCE_URL=https://your-company.atlassian.net/wiki \
+CONFLUENCE_USERNAME=your.email@company.com \
+CONFLUENCE_API_TOKEN=<your-token> \
   mcp-gateway
 ```
 
@@ -198,11 +238,63 @@ When `GRAFANA_URL` is set, the gateway proxies 50+ tools from mcp-grafana:
 | `grafana/generate_deeplink` | Generate Grafana URLs |
 | ... | [Full list](https://github.com/grafana/mcp-grafana#tools) |
 
+### Confluence (external, prefixed with `confluence/`)
+
+When `CONFLUENCE_URL` is set, the gateway proxies 23 tools from mcp-atlassian:
+
+| Tool | Description |
+|------|-------------|
+| `confluence/confluence_search` | Search pages using CQL |
+| `confluence/confluence_get_page` | Get page content by ID or title |
+| `confluence/confluence_get_page_children` | List child pages |
+| `confluence/confluence_get_comments` | Get page comments |
+| `confluence/confluence_get_labels` | Get labels on a page |
+| `confluence/confluence_add_label` | Add a label to a page |
+| `confluence/confluence_create_page` | Create a new page |
+| `confluence/confluence_update_page` | Update an existing page |
+| `confluence/confluence_delete_page` | Delete a page |
+| `confluence/confluence_move_page` | Move a page to another parent |
+| `confluence/confluence_add_comment` | Add a comment to a page |
+| `confluence/confluence_reply_to_comment` | Reply to a comment |
+| `confluence/confluence_search_user` | Search for users |
+| `confluence/confluence_get_page_history` | Get page revision history |
+| `confluence/confluence_get_page_diff` | Diff between two versions |
+| `confluence/confluence_get_page_views` | Get page view statistics |
+| `confluence/confluence_upload_attachment` | Upload an attachment |
+| `confluence/confluence_get_attachments` | List page attachments |
+| `confluence/confluence_download_attachment` | Download an attachment |
+| `confluence/confluence_get_page_images` | Get images embedded in a page |
+| ... | [Full list](https://github.com/sooperset/mcp-atlassian#key-tools) |
+
 ### Resources
 
 | URI | Description |
 |-----|-------------|
 | `clickhouse://database/{name}` | Database connection info and summary statistics (JSON) |
+
+## Confluence Setup
+
+### Get an API Token (Confluence Cloud)
+
+1. Go to [https://id.atlassian.com/manage-profile/security/api-tokens](https://id.atlassian.com/manage-profile/security/api-tokens)
+2. Click **Create API token**, give it a name (e.g. `mcp-gateway`)
+3. Copy the token immediately (shown only once)
+
+Set in `.env`:
+```bash
+CONFLUENCE_URL=https://your-company.atlassian.net/wiki
+CONFLUENCE_USERNAME=your.email@company.com
+CONFLUENCE_API_TOKEN=<token>
+```
+
+### Personal Access Token (Confluence Server/Data Center)
+
+Go to Confluence → **Profile** → **Personal Access Tokens** → **Create token**.
+Set only `CONFLUENCE_API_TOKEN` (no `CONFLUENCE_USERNAME` needed).
+
+### Error Handling
+
+If mcp-atlassian fails to start or connect, the gateway logs a warning and starts without Confluence tools. ClickHouse tools always work regardless of upstream status.
 
 ## Grafana Setup
 
@@ -227,8 +319,7 @@ When `GRAFANA_URL` is set, the gateway proxies 50+ tools from mcp-grafana:
 
 ### Error Handling
 
-- If mcp-grafana fails to start or connect, the gateway logs a warning and starts with only ClickHouse tools.
-- ClickHouse tools always work regardless of Grafana upstream status.
+If mcp-grafana fails to start or connect, the gateway logs a warning and starts with only ClickHouse tools.
 
 ## LLM / AI Agent Integration
 
@@ -253,7 +344,10 @@ or `%APPDATA%\Claude\claude_desktop_config.json` (Windows)
         "CLICKHOUSE_USER": "default",
         "CLICKHOUSE_DATABASE": "default",
         "GRAFANA_URL": "http://localhost:3000",
-        "GRAFANA_SERVICE_ACCOUNT_TOKEN": "<your-token>"
+        "GRAFANA_SERVICE_ACCOUNT_TOKEN": "<your-token>",
+        "CONFLUENCE_URL": "https://your-company.atlassian.net/wiki",
+        "CONFLUENCE_USERNAME": "your.email@company.com",
+        "CONFLUENCE_API_TOKEN": "<your-token>"
       }
     }
   }
@@ -271,8 +365,32 @@ File: `.cursor/mcp.json` in your project root or `~/.cursor/mcp.json` (global)
       "command": "/absolute/path/to/mcp-gateway",
       "env": {
         "CLICKHOUSE_URL": "http://localhost:8123",
-        "GRAFANA_URL": "http://localhost:3000",
-        "GRAFANA_SERVICE_ACCOUNT_TOKEN": "<your-token>"
+        "CONFLUENCE_URL": "https://your-company.atlassian.net/wiki",
+        "CONFLUENCE_USERNAME": "your.email@company.com",
+        "CONFLUENCE_API_TOKEN": "<your-token>"
+      }
+    }
+  }
+}
+```
+
+### IronCode
+
+File: `~/.config/ironcode/ironcode.json`
+
+```json
+{
+  "mcp": {
+    "mcp-gateway": {
+      "type": "local",
+      "command": ["/absolute/path/to/mcp-gateway"],
+      "environment": {
+        "CLICKHOUSE_URL": "http://localhost:8123",
+        "CLICKHOUSE_USER": "default",
+        "CLICKHOUSE_DATABASE": "default",
+        "CONFLUENCE_URL": "https://your-company.atlassian.net/wiki",
+        "CONFLUENCE_USERNAME": "your.email@company.com",
+        "CONFLUENCE_API_TOKEN": "<your-token>"
       }
     }
   }
@@ -367,7 +485,9 @@ mcp-gateway --transport sse --port 3000
 | "Search for dashboards about revenue" | `grafana/search_dashboards` |
 | "Query Prometheus for CPU usage" | `grafana/query_prometheus` |
 | "Show me Loki logs with errors" | `grafana/query_loki_logs` |
-| "List alert rules" | `grafana/alerting_manage_rules` |
+| "Search Confluence for onboarding docs" | `confluence/confluence_search` |
+| "Get the content of page 'API Reference'" | `confluence/confluence_get_page` |
+| "Create a new Confluence page" | `confluence/confluence_create_page` |
 
 ## Testing with curl (SSE Transport)
 
@@ -398,7 +518,7 @@ curl -X POST "http://localhost:3000/message?sessionId=<SESSION_ID>" \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc": "2.0", "method": "notifications/initialized"}'
 
-# Call a ClickHouse tool (internal)
+# Call a ClickHouse tool
 curl -X POST "http://localhost:3000/message?sessionId=<SESSION_ID>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -407,11 +527,20 @@ curl -X POST "http://localhost:3000/message?sessionId=<SESSION_ID>" \
     "params": { "name": "clickhouse_list_tables", "arguments": {} }
   }'
 
-# Call a Grafana tool (external, proxied)
+# Search Confluence
 curl -X POST "http://localhost:3000/message?sessionId=<SESSION_ID>" \
   -H "Content-Type: application/json" \
   -d '{
     "jsonrpc": "2.0", "id": 3,
+    "method": "tools/call",
+    "params": { "name": "confluence/confluence_search", "arguments": {"query": "onboarding", "limit": 5} }
+  }'
+
+# Call a Grafana tool
+curl -X POST "http://localhost:3000/message?sessionId=<SESSION_ID>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0", "id": 4,
     "method": "tools/call",
     "params": { "name": "grafana/search_dashboards", "arguments": {"query": ""} }
   }'
@@ -437,6 +566,8 @@ RUST_LOG=warn cargo run
 - Use fully-qualified table names (e.g. `mydb.my_table`) when querying tables outside the configured default database.
 - The `clickhouse_stats` tool queries `system.parts`, which requires `SELECT` privileges on that system table.
 - The server performs a ClickHouse health check (`SELECT 1`) on startup. If it fails, the server still starts but logs a warning.
+- External upstreams (Grafana, Confluence) are optional — omit their env vars to disable them.
+- On first run with `uvx`, `mcp-atlassian` and `mcp-grafana` are auto-downloaded. Subsequent runs use the cached version.
 
 ## License
 

@@ -1,8 +1,9 @@
-//! MCP Gateway — ClickHouse (internal) + Grafana (external)
+//! MCP Gateway — ClickHouse (internal) + Grafana + Confluence (external)
 //!
 //! A gateway MCP server that aggregates:
 //! - **ClickHouse** tools (internal) — direct HTTP connection to ClickHouse
 //! - **Grafana** tools (external) — proxied from [mcp-grafana](https://github.com/grafana/mcp-grafana)
+//! - **Confluence** tools (external) — proxied from [mcp-atlassian](https://github.com/sooperset/mcp-atlassian)
 //!
 //! ## Architecture
 //!
@@ -11,10 +12,12 @@
 //! │ AI Agent │ ─────> │      mcp-gateway         │ stdio  │   mcp-grafana     │
 //! │          │        │                          │ ─────> │   (external)      │
 //! │          │        │  ┌────────────────────┐  │        └───────────────────┘
-//! │          │        │  │ ClickHouse tools   │  │
-//! │          │        │  │ (internal, HTTP)   │──│──> ClickHouse :8123
-//! │          │        │  └────────────────────┘  │
-//! └──────────┘        └──────────────────────────┘
+//! │          │        │  │ ClickHouse tools   │  │        ┌───────────────────┐
+//! │          │        │  │ (internal, HTTP)   │──│──>     │   mcp-atlassian   │
+//! │          │        │  └────────────────────┘  │ stdio  │   (Confluence)    │
+//! │          │        │                          │ ─────> │   (external)      │
+//! └──────────┘        └──────────────────────────┘        └───────────────────┘
+//!                                                 ──> ClickHouse :8123
 //! ```
 //!
 //! - **Internal backends** are implemented directly in this binary (ClickHouse
@@ -31,6 +34,19 @@
 //! # ClickHouse + Grafana
 //! GRAFANA_URL=http://localhost:3000 \
 //! GRAFANA_SERVICE_ACCOUNT_TOKEN=<token> \
+//!   mcp-gateway --transport sse --port 3000
+//!
+//! # ClickHouse + Confluence
+//! CONFLUENCE_URL=https://your-company.atlassian.net/wiki \
+//! CONFLUENCE_USERNAME=your.email@company.com \
+//! CONFLUENCE_API_TOKEN=<token> \
+//!   mcp-gateway
+//!
+//! # All backends
+//! GRAFANA_URL=http://localhost:3000 GRAFANA_SERVICE_ACCOUNT_TOKEN=<token> \
+//! CONFLUENCE_URL=https://your-company.atlassian.net/wiki \
+//! CONFLUENCE_USERNAME=your.email@company.com \
+//! CONFLUENCE_API_TOKEN=<token> \
 //!   mcp-gateway --transport sse --port 3000
 //! ```
 
@@ -121,6 +137,7 @@ async fn main() -> anyhow::Result<()> {
 /// Build the gateway MCP server:
 /// 1. Register internal ClickHouse tools (direct HTTP, no proxy)
 /// 2. Connect external Grafana upstream (if configured) and proxy its tools
+/// 3. Connect external Confluence upstream via mcp-atlassian (if configured) and proxy its tools
 async fn build_gateway(
     db: SharedDatabase,
     ch_config: &infrastructure::clickhouse::ClickHouseConfig,
@@ -128,7 +145,7 @@ async fn build_gateway(
 ) -> anyhow::Result<McpServer> {
     // ── Instructions ──
     let mut instructions = format!(
-        "MCP Gateway — ClickHouse + Grafana\n\n\
+        "MCP Gateway — ClickHouse + Grafana + Confluence\n\n\
          Internal backends:\n\
          - ClickHouse ({}, database: {})\n\
          - clickhouse_query, clickhouse_list_tables, clickhouse_describe_table\n\
@@ -143,6 +160,16 @@ async fn build_gateway(
              - search_dashboards, get_dashboard_by_uid, list_datasources\n\
              - query_prometheus, query_loki_logs, alerting_manage_rules, etc.",
             cli.grafana_prefix
+        ));
+    }
+
+    if cli.confluence_enabled() {
+        instructions.push_str(&format!(
+            "\n\nExternal upstreams:\n\
+             - Confluence via mcp-atlassian (tools prefixed with `{}/`)\n\
+             - confluence_search, confluence_get_page, confluence_create_page\n\
+             - confluence_update_page, confluence_add_comment, etc.",
+            cli.confluence_prefix
         ));
     }
 
@@ -215,6 +242,70 @@ async fn build_gateway(
                 tracing::error!(
                     error = %e,
                     "Failed to connect Grafana upstream — starting without Grafana tools"
+                );
+            }
+        }
+    }
+
+    // ── External: Confluence upstream via mcp-atlassian (optional) ──
+    if let Some(ref confluence_url) = cli.confluence_url {
+        tracing::info!(
+            confluence_url = %confluence_url,
+            prefix = %cli.confluence_prefix,
+            bin = %cli.confluence_mcp_bin,
+            "Connecting to external upstream: Confluence (mcp-atlassian)"
+        );
+
+        let mut confluence_args: Vec<String> = Vec::new();
+        let confluence_env: Vec<(String, String)> = Vec::new();
+
+        // If using uvx, first arg is the package name
+        if cli.confluence_mcp_bin == "uvx" {
+            confluence_args.push("mcp-atlassian".into());
+        }
+
+        // Pass credentials as CLI args (mcp-atlassian supports both args and env vars)
+        confluence_args.extend(["--confluence-url".into(), confluence_url.clone()]);
+        if let Some(ref username) = cli.confluence_username {
+            confluence_args.extend(["--confluence-username".into(), username.clone()]);
+        }
+        if let Some(ref token) = cli.confluence_api_token {
+            confluence_args.extend(["--confluence-token".into(), token.clone()]);
+        }
+
+        let mut gw = GatewayManager::new();
+        gw.add_upstream(UpstreamConfig {
+            name: "confluence".into(),
+            transport: UpstreamTransport::Stdio {
+                program: cli.confluence_mcp_bin.clone(),
+                args: confluence_args,
+                env: confluence_env,
+            },
+            prefix: Some(cli.confluence_prefix.clone()),
+            client_name: Some("mcp-gateway".into()),
+            client_version: Some(env!("CARGO_PKG_VERSION").into()),
+        });
+
+        match gw.connect_and_discover().await {
+            Ok((tool_defs, resource_defs, prompt_defs)) => {
+                for td in tool_defs {
+                    builder = builder.tool_def(td);
+                }
+                for rd in resource_defs {
+                    builder = builder.resource_def(rd);
+                }
+                for pd in prompt_defs {
+                    builder = builder.prompt_def(pd);
+                }
+                tracing::info!(
+                    connected = gw.connected_count(),
+                    "External upstream ready: Confluence"
+                );
+            }
+            Err(e) => {
+                tracing::error!(
+                    error = %e,
+                    "Failed to connect Confluence upstream — starting without Confluence tools"
                 );
             }
         }
